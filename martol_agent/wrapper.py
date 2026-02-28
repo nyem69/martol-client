@@ -197,6 +197,14 @@ class AgentWrapper:
                 self._append_context(msg)
             log.info("Loaded %d messages into context", len(messages))
 
+        # AI disclosure: announce presence per Anthropic usage policy
+        provider_name = type(self.provider).__name__.replace("Provider", "")
+        model_name = getattr(self.provider, "model", "unknown")
+        await self.send_message(
+            f"[AI Agent] {self.label} connected (powered by {provider_name}, model: {model_name}). "
+            f"I am an AI assistant. Responses should not be relied upon without verification."
+        )
+
     # ── Listening ────────────────────────────────────────────────────
 
     async def _listen(self, ws: WebSocketClientProtocol) -> None:
