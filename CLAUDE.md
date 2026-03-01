@@ -65,7 +65,7 @@ CLI args / env vars
 
 ### Key flows
 
-1. **Startup**: `_startup_sync()` calls `chat_who` (room info) + `chat_resync` (seed context), then sends an AI disclosure message.
+1. **Startup**: `_startup_sync()` calls `chat_who` (room info) + `chat_resync` (seed context), then sends an AI disclosure message. The agent finds itself in the member list by matching `--name` against member names.
 2. **Message handling**: WebSocket messages arrive in `_listen()` → `_handle_message()` → `_should_respond()` gates on mention/all mode → `_generate_response()` calls the LLM.
 3. **Tool loop**: LLM can return tool calls (`action_submit`/`action_status`), executed via MCP HTTP. Results are fed back for up to `MAX_TOOL_ITERATIONS` (5) rounds.
 4. **Reconnection**: Exponential backoff (1s → 30s max), up to 20 attempts. Stops permanently on code 4001 (API key revoked).
@@ -73,6 +73,8 @@ CLI args / env vars
 ### State management
 
 All state lives as instance variables on `AgentWrapper`:
+- `self.name` — agent name from CLI (used for @mention detection)
+- `self.agent_user_id` / `self.agent_name` — resolved from `chat_who` at startup
 - `self.conversation` — rolling context window (default 50 messages)
 - `self.last_known_id` — sequence tracking for reconnection
 - `self._responding` — `asyncio.Lock()` serializes LLM calls

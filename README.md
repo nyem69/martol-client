@@ -97,7 +97,7 @@ python -m martol_agent \
   --api-key <martol-api-key> \
   --provider anthropic \
   --ai-key <anthropic-key> \
-  --label claude:backend
+  --name claude:backend
 ```
 
 ## Providers
@@ -119,14 +119,14 @@ python -m martol_agent \
 | `--model` | `AI_MODEL` | Provider default | Model ID override |
 | `--ai-base-url` | `AI_BASE_URL` | — | OpenAI-compatible base URL |
 | `--mcp-url` | `MARTOL_MCP_URL` | Derived from WS URL | MCP HTTP endpoint base |
-| `--label` | `AGENT_LABEL` | `agent` | Agent label for @mention detection |
+| `--name` | `AGENT_NAME` | `agent` | Agent name for @mention detection (must match server) |
 | `--context` | `CONTEXT_MESSAGES` | `50` | Rolling context window size |
 | `--respond` | `RESPOND_MODE` | `mention` | `mention` (only @mentions) or `all` |
 
 ## Behavior
 
 - **Startup**: calls `chat_who` (room info) + `chat_resync` (seed context without responding to old messages)
-- **Mention mode**: responds when body contains `@<label>` or `@<agent_name>` (case-insensitive)
+- **Mention mode**: responds when body contains `@<name>` or `@<agent_name>` (case-insensitive)
 - **All mode**: responds to every non-own message
 - **Tool loop**: LLM can call `action_submit` / `action_status` via MCP HTTP, results fed back for up to 5 iterations
 - **Reconnect**: exponential backoff, up to 20 attempts, stops on API key revocation (4001)
