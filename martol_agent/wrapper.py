@@ -562,6 +562,17 @@ class AgentWrapper:
         """Gracefully stop the wrapper."""
         log.info("Stopping agent wrapper...")
         self.running = False
+        if self.ws:
+            asyncio.ensure_future(self._shutdown())
+
+    async def _shutdown(self) -> None:
+        """Send farewell message and close WebSocket cleanly."""
+        try:
+            await self.send_message("[AI Agent] Disconnecting. Goodbye!")
+            if self.ws:
+                await self.ws.close()
+        except Exception:
+            pass
 
 
 # ── CLI ──────────────────────────────────────────────────────────────
