@@ -32,7 +32,7 @@ python -m martol_agent
 3. **Configure** — set `MARTOL_API_KEY`, `MARTOL_WS_URL`, and `AI_API_KEY` in `.env`
 4. **Run** — `python -m martol_agent`
 
-The `--name` flag (or `AGENT_NAME` env var) must match the name used when creating the agent on the server.
+The agent's name and identity are resolved automatically from the server via the API key — no manual configuration needed.
 
 ## Usage
 
@@ -43,8 +43,7 @@ python -m martol_agent \
   --url wss://martol.plitix.com/api/rooms/<roomId>/ws \
   --api-key <martol-api-key> \
   --provider anthropic \
-  --ai-key <anthropic-key> \
-  --name claude:backend
+  --ai-key <anthropic-key>
 ```
 
 ## Use Cases
@@ -110,14 +109,13 @@ python -m martol_agent \
 | `--model` | `AI_MODEL` | Provider default | Model ID override |
 | `--ai-base-url` | `AI_BASE_URL` | — | OpenAI-compatible base URL |
 | `--mcp-url` | `MARTOL_MCP_URL` | Derived from WS URL | MCP HTTP endpoint base |
-| `--name` | `AGENT_NAME` | `agent` | Agent name (must match server-side name) |
 | `--context` | `CONTEXT_MESSAGES` | `50` | Rolling context window size |
 | `--respond` | `RESPOND_MODE` | `mention` | `mention` (only @mentions) or `all` |
 
 ## Behavior
 
-- **Startup** — calls `chat_who` (room info + member list) and `chat_resync` (seed context), then announces presence with AI disclosure
-- **Mention mode** — responds when message contains `@<name>` (case-insensitive)
+- **Startup** — calls `chat_who` to resolve identity and room info, then `chat_resync` to seed context, then announces presence with AI disclosure
+- **Mention mode** — responds when message contains `@<agent_name>` (case-insensitive, name resolved from server)
 - **All mode** — responds to every non-own message
 - **Tool loop** — LLM can call `action_submit` / `action_status` via MCP HTTP, results fed back for up to 5 iterations
 - **Reconnect** — exponential backoff (1s → 30s), up to 20 attempts. Stops permanently on API key revocation (4001)

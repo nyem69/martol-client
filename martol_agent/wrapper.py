@@ -8,7 +8,7 @@ Dual channel architecture:
 
 Usage:
     python -m martol_agent --url wss://martol.plitix.com/api/rooms/<roomId>/ws \
-        --api-key <martol-key> --provider anthropic --ai-key <ai-key> --name claude:backend
+        --api-key <martol-key> --provider anthropic --ai-key <ai-key>
 
 Environment variables (alternative to flags):
     MARTOL_WS_URL    — WebSocket URL
@@ -18,7 +18,6 @@ Environment variables (alternative to flags):
     AI_API_KEY       — LLM provider API key
     AI_MODEL         — Model ID override
     AI_BASE_URL      — OpenAI-compatible base URL
-    AGENT_NAME       — Agent name for @mention detection (must match server-side name)
     CONTEXT_MESSAGES — Rolling context window size (default: 50)
     RESPOND_MODE     — "mention" (only @mentions) or "all" (every non-own message)
 """
@@ -90,7 +89,6 @@ class AgentWrapper:
         api_key: str,
         provider: LLMProvider,
         mcp_url: str,
-        name: str,
         context_size: int = 50,
         respond_mode: str = "mention",
     ):
@@ -98,7 +96,6 @@ class AgentWrapper:
         self.api_key = api_key
         self.provider = provider
         self.mcp_url = mcp_url
-        self.name = name
         self.context_size = context_size
         self.respond_mode = respond_mode
 
@@ -168,29 +165,23 @@ class AgentWrapper:
         if who and who.get("ok"):
             data = who["data"]
             self.room_name = data.get("room_name", "unknown")
+            self.agent_user_id = data.get("self_user_id")
             members = data.get("members", [])
             self.member_count = len(members)
 
-            # Find our own user ID from the member list
-            for m in members:
-                if m.get("is_agent") and m.get("name", "").lower() == self.name.lower():
-                    self.agent_user_id = m.get("user_id")
-                    self.agent_name = m.get("name")
-                    break
-
-            # Fallback: first agent in the list
-            if not self.agent_user_id:
+            # Resolve our display name from the member list
+            if self.agent_user_id:
                 for m in members:
-                    if m.get("is_agent"):
-                        self.agent_user_id = m.get("user_id")
+                    if m.get("user_id") == self.agent_user_id:
                         self.agent_name = m.get("name")
                         break
 
             log.info(
-                "Room: %s (%d members), agent: %s",
+                "Room: %s (%d members), agent: %s (%s)",
                 self.room_name,
                 self.member_count,
                 self.agent_name or "unknown",
+                self.agent_user_id or "no id",
             )
 
         # Resync recent messages (does NOT trigger responses)
@@ -204,8 +195,9 @@ class AgentWrapper:
         # AI disclosure: announce presence per Anthropic usage policy
         provider_name = type(self.provider).__name__.replace("Provider", "")
         model_name = getattr(self.provider, "model", "unknown")
+        display = self.agent_name or "agent"
         await self.send_message(
-            f"[AI Agent] {self.name} connected (powered by {provider_name}, model: {model_name}). "
+            f"[AI Agent] {display} connected (powered by {provider_name}, model: {model_name}). "
             f"I am an AI assistant. Responses should not be relied upon without verification."
         )
 
@@ -323,18 +315,18 @@ class AgentWrapper:
 
     def _is_mentioned(self, body: str) -> bool:
         """Check if the agent is mentioned in the message body."""
+        if not self.agent_name:
+            return False
+
         body_lower = body.lower()
+        name_lower = self.agent_name.lower()
 
         # Check @name (e.g. @claude:backend)
-        if self.name and f"@{self.name.lower()}" in body_lower:
-            return True
-
-        # Check @agent_name (server-side display name, if different)
-        if self.agent_name and self.agent_name.lower() != self.name.lower() and f"@{self.agent_name.lower()}" in body_lower:
+        if f"@{name_lower}" in body_lower:
             return True
 
         # Check without @ prefix (just the name)
-        if self.name and self.name.lower() in body_lower:
+        if name_lower in body_lower:
             return True
 
         return False
@@ -362,12 +354,13 @@ class AgentWrapper:
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt with room context."""
+        display = self.agent_name or "agent"
         return (
-            f"You are {self.name}, an AI assistant in a collaborative workspace "
+            f"You are {display}, an AI assistant in a collaborative workspace "
             f"called Martol.\n"
             f'You are in room "{self.room_name or "unknown"}" with '
             f"{self.member_count} members.\n\n"
-            f"You respond when mentioned with @{self.name}.\n\n"
+            f"You respond when mentioned with @{display}.\n\n"
             f"When users ask you to take actions (write code, modify files, deploy, "
             f"review code, etc.), use the action_submit tool. The action will be "
             f"reviewed and approved by a human with sufficient authority before "
@@ -609,11 +602,6 @@ async def main() -> None:
         help="OpenAI-compatible base URL",
     )
     parser.add_argument(
-        "--name",
-        default=os.environ.get("AGENT_NAME") or os.environ.get("AGENT_LABEL", "agent"),
-        help="Agent name for @mention detection (must match server-side name)",
-    )
-    parser.add_argument(
         "--context",
         type=int,
         default=int(os.environ.get("CONTEXT_MESSAGES", "50")),
@@ -656,7 +644,6 @@ async def main() -> None:
         api_key=args.api_key,
         provider=provider,
         mcp_url=mcp_url,
-        name=args.name,
         context_size=args.context,
         respond_mode=args.respond,
     )
@@ -667,8 +654,7 @@ async def main() -> None:
         loop.add_signal_handler(sig, wrapper.stop)
 
     log.info(
-        "Starting agent (name=%s, mode=%s, context=%d, mcp=%s)",
-        args.name,
+        "Starting agent (mode=%s, context=%d, mcp=%s)",
         args.respond,
         args.context,
         mcp_url,
