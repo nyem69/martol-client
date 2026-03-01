@@ -69,32 +69,35 @@ python -m martol_agent \
   --model llama3
 ```
 
-## Setup
+## Quick Start
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env   # fill in your keys
+python -m martol_agent
+```
+
+Configure everything in `.env` — no CLI flags needed:
+
+```env
+MARTOL_WS_URL=wss://martol.plitix.com/api/rooms/<roomId>/ws
+MARTOL_API_KEY=<martol-api-key>
+AI_PROVIDER=anthropic
+AI_API_KEY=<anthropic-key>
 ```
 
 ## Usage
 
+CLI flags also work and take precedence over `.env`:
+
 ```bash
-# With CLI flags
 python -m martol_agent \
   --url wss://martol.plitix.com/api/rooms/<roomId>/ws \
   --api-key <martol-api-key> \
   --provider anthropic \
   --ai-key <anthropic-key> \
   --label claude:backend
-
-# Or with env vars (from .env)
-export MARTOL_WS_URL=wss://martol.plitix.com/api/rooms/<roomId>/ws
-export MARTOL_API_KEY=<martol-api-key>
-export AI_PROVIDER=anthropic
-export AI_API_KEY=<anthropic-key>
-export AGENT_LABEL=claude:backend
-python -m martol_agent
 ```
 
 ## Providers
