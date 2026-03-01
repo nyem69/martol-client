@@ -34,6 +34,10 @@ import uuid
 from typing import Any
 from urllib.parse import urlparse
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 try:
     import websockets
     from websockets.client import WebSocketClientProtocol
@@ -124,7 +128,7 @@ class AgentWrapper:
                 headers = {"x-api-key": self.api_key}
 
                 log.info("Connecting to %s (attempt %d)...", self.ws_url, attempt + 1)
-                async with websockets.connect(url, additional_headers=headers) as ws:
+                async with websockets.connect(url, extra_headers=headers) as ws:
                     self.ws = ws
                     attempt = 0
                     log.info("Connected to room")
