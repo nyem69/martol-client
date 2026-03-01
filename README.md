@@ -14,14 +14,42 @@ WebSocket ──► AgentWrapper ──► LLM Provider (Anthropic / OpenAI)
             (WebSocket)          (action_submit, action_status)
 ```
 
-- **WebSocket**: real-time listen, send messages, typing indicators
-- **MCP HTTP**: structured actions that go through the server's role × risk approval matrix
+The wrapper connects to a martol room using an API key created by the room owner. It listens for @mentions, sends messages to an LLM, and relays responses back. Structured actions (code changes, deploys) go through MCP HTTP and the server's role × risk approval matrix.
+
+## Quick Start
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # fill in your keys
+python -m martol_agent
+```
+
+### Setup steps
+
+1. **Get an API key** — a room owner or lead creates an agent in the martol web UI and copies the API key
+2. **Get the room URL** — the WebSocket URL for the room (e.g. `wss://martol.plitix.com/api/rooms/<roomId>/ws`)
+3. **Configure** — set `MARTOL_API_KEY`, `MARTOL_WS_URL`, and `AI_API_KEY` in `.env`
+4. **Run** — `python -m martol_agent`
+
+The `--name` flag (or `AGENT_NAME` env var) must match the name used when creating the agent on the server.
+
+## Usage
+
+Configure via `.env` (recommended) or CLI flags (takes precedence):
+
+```bash
+python -m martol_agent \
+  --url wss://martol.plitix.com/api/rooms/<roomId>/ws \
+  --api-key <martol-api-key> \
+  --provider anthropic \
+  --ai-key <anthropic-key> \
+  --name claude:backend
+```
 
 ## Use Cases
 
 ### DevOps Assistant
-Add an AI agent to your ops room that can propose deployments, config changes, and infrastructure actions — all gated by the server's role × risk approval matrix.
-
 ```
 You:    @claude:backend deploy the latest tag to staging
 Agent:  I'll submit a deploy action for the latest tag to staging.
@@ -30,8 +58,6 @@ Agent:  I'll submit a deploy action for the latest tag to staging.
 ```
 
 ### Code Review Bot
-The agent can review code when asked and submit structured feedback through the approval pipeline.
-
 ```
 You:    @claude:backend review the auth changes in PR #42
 Agent:  I'll review the changes and submit my findings.
@@ -39,8 +65,6 @@ Agent:  I'll review the changes and submit my findings.
 ```
 
 ### Engineering Support
-Answer technical questions directly in chat, with full conversation context (rolling window of recent messages).
-
 ```
 You:    @claude:backend how does our rate limiter handle burst traffic?
 Agent:  Based on the discussion above, the rate limiter uses a token bucket
@@ -48,14 +72,12 @@ Agent:  Based on the discussion above, the rate limiter uses a token bucket
 ```
 
 ### Multi-Step Workflows
-The tool loop (up to 5 iterations) lets the agent submit an action, poll its approval status, and follow up based on the result.
+The tool loop (up to 5 iterations) lets the agent submit an action, poll its approval status, and follow up.
 
 ```
 You:    @claude:backend write a migration to add an index on users.email, then deploy it
-Agent:  I'll start by submitting the migration code for review.
-        → action_submit(action_type="code_write", ...)
+Agent:  → action_submit(action_type="code_write", ...)
         → action_status(action_id=17)  — approved
-        Now submitting the deploy action.
         → action_submit(action_type="deploy", ...)
 ```
 
@@ -69,43 +91,12 @@ python -m martol_agent \
   --model llama3
 ```
 
-## Quick Start
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # fill in your keys
-python -m martol_agent
-```
-
-Configure everything in `.env` — no CLI flags needed:
-
-```env
-MARTOL_WS_URL=wss://martol.plitix.com/api/rooms/<roomId>/ws
-MARTOL_API_KEY=<martol-api-key>
-AI_PROVIDER=anthropic
-AI_API_KEY=<anthropic-key>
-```
-
-## Usage
-
-CLI flags also work and take precedence over `.env`:
-
-```bash
-python -m martol_agent \
-  --url wss://martol.plitix.com/api/rooms/<roomId>/ws \
-  --api-key <martol-api-key> \
-  --provider anthropic \
-  --ai-key <anthropic-key> \
-  --name claude:backend
-```
-
 ## Providers
 
-| Provider | Flag | Models |
+| Provider | Flag | Default Model |
 |---|---|---|
-| Anthropic | `--provider anthropic` | `claude-sonnet-4-20250514` (default) |
-| OpenAI | `--provider openai` | `gpt-4o` (default) |
+| Anthropic | `--provider anthropic` | `claude-sonnet-4-20250514` |
+| OpenAI | `--provider openai` | `gpt-4o` |
 | OpenAI-compatible | `--provider openai --ai-base-url <url>` | Ollama, Groq, Together, vLLM, etc. |
 
 ## Options
@@ -119,17 +110,17 @@ python -m martol_agent \
 | `--model` | `AI_MODEL` | Provider default | Model ID override |
 | `--ai-base-url` | `AI_BASE_URL` | — | OpenAI-compatible base URL |
 | `--mcp-url` | `MARTOL_MCP_URL` | Derived from WS URL | MCP HTTP endpoint base |
-| `--name` | `AGENT_NAME` | `agent` | Agent name for @mention detection (must match server) |
+| `--name` | `AGENT_NAME` | `agent` | Agent name (must match server-side name) |
 | `--context` | `CONTEXT_MESSAGES` | `50` | Rolling context window size |
 | `--respond` | `RESPOND_MODE` | `mention` | `mention` (only @mentions) or `all` |
 
 ## Behavior
 
-- **Startup**: calls `chat_who` (room info) + `chat_resync` (seed context without responding to old messages)
-- **Mention mode**: responds when body contains `@<name>` or `@<agent_name>` (case-insensitive)
-- **All mode**: responds to every non-own message
-- **Tool loop**: LLM can call `action_submit` / `action_status` via MCP HTTP, results fed back for up to 5 iterations
-- **Reconnect**: exponential backoff, up to 20 attempts, stops on API key revocation (4001)
+- **Startup** — calls `chat_who` (room info + member list) and `chat_resync` (seed context), then announces presence with AI disclosure
+- **Mention mode** — responds when message contains `@<name>` (case-insensitive)
+- **All mode** — responds to every non-own message
+- **Tool loop** — LLM can call `action_submit` / `action_status` via MCP HTTP, results fed back for up to 5 iterations
+- **Reconnect** — exponential backoff (1s → 30s), up to 20 attempts. Stops permanently on API key revocation (4001)
 
 ## Project Structure
 
@@ -144,6 +135,11 @@ martol_agent/
     ├── anthropic.py          # Anthropic Claude
     └── openai_compat.py      # OpenAI / compatible APIs
 ```
+
+## Requirements
+
+- Python 3.10+
+- `websockets`, `anthropic`, `openai`, `aiohttp`, `python-dotenv`
 
 ## License
 
