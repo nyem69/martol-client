@@ -17,6 +17,58 @@ WebSocket ──► AgentWrapper ──► LLM Provider (Anthropic / OpenAI)
 - **WebSocket**: real-time listen, send messages, typing indicators
 - **MCP HTTP**: structured actions that go through the server's role × risk approval matrix
 
+## Use Cases
+
+### DevOps Assistant
+Add an AI agent to your ops room that can propose deployments, config changes, and infrastructure actions — all gated by the server's role × risk approval matrix.
+
+```
+You:    @claude:backend deploy the latest tag to staging
+Agent:  I'll submit a deploy action for the latest tag to staging.
+        → action_submit(action_type="deploy", risk_level="medium", ...)
+        ✓ Awaiting approval from a maintainer.
+```
+
+### Code Review Bot
+The agent can review code when asked and submit structured feedback through the approval pipeline.
+
+```
+You:    @claude:backend review the auth changes in PR #42
+Agent:  I'll review the changes and submit my findings.
+        → action_submit(action_type="code_review", risk_level="low", ...)
+```
+
+### Engineering Support
+Answer technical questions directly in chat, with full conversation context (rolling window of recent messages).
+
+```
+You:    @claude:backend how does our rate limiter handle burst traffic?
+Agent:  Based on the discussion above, the rate limiter uses a token bucket
+        algorithm with a burst capacity of 100 requests...
+```
+
+### Multi-Step Workflows
+The tool loop (up to 5 iterations) lets the agent submit an action, poll its approval status, and follow up based on the result.
+
+```
+You:    @claude:backend write a migration to add an index on users.email, then deploy it
+Agent:  I'll start by submitting the migration code for review.
+        → action_submit(action_type="code_write", ...)
+        → action_status(action_id=17)  — approved
+        Now submitting the deploy action.
+        → action_submit(action_type="deploy", ...)
+```
+
+### Self-Hosted / Private LLM
+Use any OpenAI-compatible API (Ollama, vLLM, etc.) to keep all data on your own infrastructure.
+
+```bash
+python -m martol_agent \
+  --provider openai \
+  --ai-base-url http://localhost:11434/v1 \
+  --model llama3
+```
+
 ## Setup
 
 ```bash
