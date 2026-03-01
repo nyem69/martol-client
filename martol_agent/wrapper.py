@@ -10,6 +10,9 @@ Usage:
     python -m martol_agent --url wss://martol.plitix.com/api/rooms/<roomId>/ws \
         --api-key <martol-key> --provider anthropic --ai-key <ai-key>
 
+    # Run with a named profile (loads .env.claude instead of .env):
+    python -m martol_agent --profile claude
+
 Environment variables (alternative to flags):
     MARTOL_WS_URL    — WebSocket URL
     MARTOL_API_KEY   — Agent API key
@@ -34,8 +37,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-
-load_dotenv()
 
 try:
     import websockets
@@ -572,7 +573,25 @@ class AgentWrapper:
 
 
 async def main() -> None:
+    # Pre-parse --profile before full arg parsing so env vars are available
+    profile_parser = argparse.ArgumentParser(add_help=False)
+    profile_parser.add_argument("--profile", default=None)
+    pre_args, _ = profile_parser.parse_known_args()
+
+    if pre_args.profile:
+        env_file = f".env.{pre_args.profile}"
+        if not os.path.exists(env_file):
+            print(f"Error: Profile file '{env_file}' not found")
+            sys.exit(1)
+        load_dotenv(env_file, override=True)
+        log.info("Loaded profile: %s (%s)", pre_args.profile, env_file)
+    else:
+        load_dotenv()
+
     parser = argparse.ArgumentParser(description="Martol Agent Wrapper")
+    parser.add_argument(
+        "--profile", default=None, help="Named profile (loads .env.<profile>)"
+    )
     parser.add_argument(
         "--url", default=os.environ.get("MARTOL_WS_URL"), help="WebSocket URL"
     )

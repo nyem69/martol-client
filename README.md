@@ -98,10 +98,27 @@ python -m martol_agent \
 | OpenAI | `--provider openai` | `gpt-4o` |
 | OpenAI-compatible | `--provider openai --ai-base-url <url>` | Ollama, Groq, Together, vLLM, etc. |
 
+## Multiple Agents
+
+Use named profiles to run multiple agents from one machine. Each profile is a separate `.env` file:
+
+```bash
+# Create profile files
+cp .env.example .env.claude    # fill in Claude agent keys
+cp .env.example .env.gpt       # fill in GPT agent keys
+
+# Run each in a separate terminal
+python -m martol_agent --profile claude
+python -m martol_agent --profile gpt
+```
+
+Each agent gets its own API key (created in the martol web UI), its own LLM provider config, and connects as a distinct agent in the room. The default `.env` is used when no `--profile` is specified.
+
 ## Options
 
 | Flag | Env Var | Default | Description |
 |---|---|---|---|
+| `--profile` | — | — | Named profile (loads `.env.<profile>`) |
 | `--url` | `MARTOL_WS_URL` | — | WebSocket URL (required) |
 | `--api-key` | `MARTOL_API_KEY` | — | Martol agent API key (required) |
 | `--ai-key` | `AI_API_KEY` | — | LLM provider API key (required) |
