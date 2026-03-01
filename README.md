@@ -1,6 +1,6 @@
 # martol-client
 
-Python agent wrapper for [martol](https://github.com/nicazmi/martol) — connects an AI agent to a chat room via WebSocket + MCP HTTP.
+Python agent wrapper for [martol](https://github.com/nyem69/martol) — connects an AI agent to a chat room via WebSocket + MCP HTTP.
 
 ## How It Works
 
