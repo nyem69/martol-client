@@ -44,6 +44,7 @@ Configuration is via CLI flags or environment variables (CLI takes precedence). 
 | `anthropic>=0.40.0` | Anthropic Claude SDK |
 | `openai>=1.50.0` | OpenAI SDK (also powers compatible APIs) |
 | `aiohttp>=3.9.0` | Async HTTP for MCP calls |
+| `python-dotenv>=1.0.0` | Loads `.env` file into `os.environ` at startup |
 
 No build system, no bundler — runs directly as a Python module.
 
