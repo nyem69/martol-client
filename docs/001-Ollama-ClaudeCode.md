@@ -1,5 +1,7 @@
 # 001: Claude Code Integration via Martol Chat
 
+**Status:** Implemented (2026-03-02) — all core components merged to `main`.
+
 ## Problem
 
 The current martol-client connects to an LLM API (Anthropic/OpenAI) and relays chat messages. This works for conversation, but the LLM has no access to the local filesystem — it can't read code, edit files, run commands, or do anything a developer would do at a terminal.
@@ -175,6 +177,24 @@ Each chat message triggers `claude -p --resume <session-id> "prompt"`. Session p
 Spawn Claude Code in a pseudo-terminal, parse terminal output, detect permission prompts by pattern matching.
 
 **Rejected because:** Fragile — relies on parsing ANSI escape codes and terminal formatting. No structured protocol. Hard to maintain across Claude Code versions.
+
+## Implementation Status
+
+| Component | Status | Commit |
+|-----------|--------|--------|
+| `claude-agent-sdk` dependency | Done | `474f0ef` |
+| `ClaudeCodeWrapper` class | Done | `d376396` |
+| `--mode claude-code` CLI | Done | `c805365` |
+| `.env.example` settings | Done | `c59c8e7` |
+| README + CLAUDE.md docs | Done | `3eb3899` |
+| Code review fixes | Done | `0813232` |
+| Smoke test | Pending — requires live martol room |
+
+### Known Follow-ups
+
+- Extract shared infrastructure into a base class (`AgentWrapper` and `ClaudeCodeWrapper` share ~250 lines)
+- Add `max_turns` / `max_budget_usd` safety limits
+- Add `!cancel` / `!stop` chat command to interrupt long-running Claude Code operations
 
 ## Resolved Questions
 
