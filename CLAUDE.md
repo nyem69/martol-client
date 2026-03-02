@@ -17,6 +17,7 @@ martol_agent/
 ├── __main__.py              # Entry point: python -m martol_agent
 ├── wrapper.py               # AgentWrapper — core orchestrator (WS + MCP + LLM)
 ├── tools.py                 # Provider-agnostic tool definitions + converters
+├── claude_code_wrapper.py   # Claude Code bridge mode
 └── providers/
     ├── __init__.py           # LLMProvider ABC, ToolCall/LLMResponse dataclasses, factory
     ├── anthropic.py          # Anthropic Claude implementation
@@ -45,6 +46,7 @@ Configuration is via CLI flags or environment variables (CLI takes precedence). 
 | `openai>=1.50.0` | OpenAI SDK (also powers compatible APIs) |
 | `aiohttp>=3.9.0` | Async HTTP for MCP calls |
 | `python-dotenv>=1.0.0` | Loads `.env` file into `os.environ` at startup |
+| `claude-agent-sdk>=0.1.0` | Claude Code Agent SDK for subprocess bridge |
 
 No build system, no bundler — runs directly as a Python module.
 
@@ -62,6 +64,10 @@ CLI args / env vars
       ├── AnthropicProvider  (default model: claude-sonnet-4-20250514)
       └── OpenAICompatProvider (default model: gpt-4o)
 ```
+
+### Claude Code mode
+
+When `--mode claude-code` is used, the wrapper bypasses the LLM provider strategy entirely. Instead, `claude_code_wrapper.py` runs Claude Code as a subprocess via the `claude-agent-sdk`. Chat messages are forwarded to the Claude Code process, which has full access to the local project directory. Tool calls (e.g. file reads/writes, shell commands) are handled by Claude Code itself, while structured actions still go through MCP HTTP and the server's approval matrix. Configuration is controlled via `--claude-model`, `--claude-permission-mode`, and `--claude-allowed-tools`.
 
 ### Key flows
 

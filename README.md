@@ -90,6 +90,14 @@ python -m martol_agent \
   --model llama3
 ```
 
+### Claude Code Mode
+Run Claude Code as the AI backend with full project access. Chat room members direct Claude Code to read, analyze, and modify code — with tool use gated through the server's approval matrix.
+
+```bash
+cd /path/to/your/project
+python -m martol_agent --mode claude-code
+```
+
 ## Providers
 
 | Provider | Flag | Default Model |
@@ -128,6 +136,10 @@ Each agent gets its own API key (created in the martol web UI), its own LLM prov
 | `--mcp-url` | `MARTOL_MCP_URL` | Derived from WS URL | MCP HTTP endpoint base |
 | `--context` | `CONTEXT_MESSAGES` | `50` | Rolling context window size |
 | `--respond` | `RESPOND_MODE` | `mention` | `mention` (only @mentions) or `all` |
+| `--mode` | `AGENT_MODE` | `provider` | `provider` (LLM API) or `claude-code` |
+| `--claude-model` | `CLAUDE_CODE_MODEL` | Claude default | Model for Claude Code mode |
+| `--claude-permission-mode` | `CLAUDE_CODE_PERMISSION_MODE` | `default` | Permission mode for Claude Code |
+| `--claude-allowed-tools` | `CLAUDE_CODE_ALLOWED_TOOLS` | — | Auto-approved tools (comma-separated) |
 
 ## Behavior
 
@@ -154,7 +166,7 @@ martol_agent/
 ## Requirements
 
 - Python 3.10+
-- `websockets`, `anthropic`, `openai`, `aiohttp`, `python-dotenv`
+- `websockets`, `anthropic`, `openai`, `aiohttp`, `python-dotenv`, `claude-agent-sdk`
 
 ## License
 
