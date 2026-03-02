@@ -174,6 +174,6 @@ martol_agent/
 
 This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).
 
-Copyright (c) 2026 Noorazmi Abd Aziz. See [COPYRIGHT](COPYRIGHT) for details.
+Copyright (c) 2026 nyem. See [COPYRIGHT](COPYRIGHT) for details.
 
 If you modify this software and make it available over a network, you must release your modifications under the same license. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
