@@ -632,52 +632,99 @@ async def main() -> None:
         choices=["mention", "all"],
         help="Response mode: mention (only @mentions) or all",
     )
+    parser.add_argument(
+        "--mode",
+        default=os.environ.get("AGENT_MODE", "provider"),
+        choices=["provider", "claude-code"],
+        help="Agent mode: provider (LLM API) or claude-code (Claude Code subprocess)",
+    )
+    parser.add_argument(
+        "--claude-model",
+        default=os.environ.get("CLAUDE_CODE_MODEL"),
+        help="Model override for Claude Code mode",
+    )
+    parser.add_argument(
+        "--claude-permission-mode",
+        default=os.environ.get("CLAUDE_CODE_PERMISSION_MODE", "default"),
+        help="Claude Code permission mode (default, acceptEdits, bypassPermissions)",
+    )
+    parser.add_argument(
+        "--claude-allowed-tools",
+        default=os.environ.get("CLAUDE_CODE_ALLOWED_TOOLS"),
+        help="Comma-separated list of auto-approved Claude Code tools",
+    )
     args = parser.parse_args()
 
-    # Validate required args
+    # Validate required args (common to both modes)
     if not args.url:
         print("Error: WebSocket URL required (--url or MARTOL_WS_URL)")
         sys.exit(1)
     if not args.api_key:
         print("Error: Martol API key required (--api-key or MARTOL_API_KEY)")
         sys.exit(1)
-    if not args.ai_key:
-        print("Error: LLM API key required (--ai-key or AI_API_KEY)")
-        sys.exit(1)
 
     # Derive MCP URL if not provided
     mcp_url = args.mcp_url or derive_mcp_url(args.url)
 
-    # Create LLM provider
-    provider = create_provider(
-        provider=args.provider,
-        api_key=args.ai_key,
-        model=args.model,
-        base_url=args.ai_base_url,
-    )
-    log.info("Using provider: %s (model: %s)", args.provider, args.model or "default")
+    if args.mode == "claude-code":
+        from martol_agent.claude_code_wrapper import ClaudeCodeWrapper
 
-    # Create wrapper
-    wrapper = AgentWrapper(
-        ws_url=args.url,
-        api_key=args.api_key,
-        provider=provider,
-        mcp_url=mcp_url,
-        context_size=args.context,
-        respond_mode=args.respond,
-    )
+        allowed_tools = []
+        if args.claude_allowed_tools:
+            allowed_tools = [t.strip() for t in args.claude_allowed_tools.split(",")]
+
+        wrapper = ClaudeCodeWrapper(
+            ws_url=args.url,
+            api_key=args.api_key,
+            mcp_url=mcp_url,
+            context_size=args.context,
+            respond_mode=args.respond,
+            claude_model=args.claude_model,
+            claude_permission_mode=args.claude_permission_mode,
+            claude_allowed_tools=allowed_tools,
+        )
+
+        log.info(
+            "Starting Claude Code agent (mode=%s, context=%d, mcp=%s)",
+            args.respond,
+            args.context,
+            mcp_url,
+        )
+    else:
+        # Original provider mode
+        if not args.ai_key:
+            print("Error: LLM API key required (--ai-key or AI_API_KEY)")
+            sys.exit(1)
+
+        provider = create_provider(
+            provider=args.provider,
+            api_key=args.ai_key,
+            model=args.model,
+            base_url=args.ai_base_url,
+        )
+        log.info("Using provider: %s (model: %s)", args.provider, args.model or "default")
+
+        wrapper = AgentWrapper(
+            ws_url=args.url,
+            api_key=args.api_key,
+            provider=provider,
+            mcp_url=mcp_url,
+            context_size=args.context,
+            respond_mode=args.respond,
+        )
+
+        log.info(
+            "Starting agent (mode=%s, context=%d, mcp=%s)",
+            args.respond,
+            args.context,
+            mcp_url,
+        )
 
     # Handle graceful shutdown
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, wrapper.stop)
 
-    log.info(
-        "Starting agent (mode=%s, context=%d, mcp=%s)",
-        args.respond,
-        args.context,
-        mcp_url,
-    )
     await wrapper.connect()
 
 
