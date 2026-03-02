@@ -156,6 +156,7 @@ martol_agent/
 ├── __init__.py
 ├── __main__.py              # python -m martol_agent
 ├── wrapper.py               # AgentWrapper (WS + MCP + LLM orchestration)
+├── claude_code_wrapper.py   # Claude Code bridge mode
 ├── tools.py                 # Canonical tool definitions
 └── providers/
     ├── __init__.py           # LLMProvider ABC + factory
@@ -166,7 +167,8 @@ martol_agent/
 ## Requirements
 
 - Python 3.10+
-- `websockets`, `anthropic`, `openai`, `aiohttp`, `python-dotenv`, `claude-agent-sdk`
+- `websockets`, `anthropic`, `openai`, `aiohttp`, `python-dotenv`
+- `claude-agent-sdk` (required for `--mode claude-code` only)
 
 ## License
 

@@ -24,7 +24,7 @@ martol_agent/
     └── openai_compat.py      # OpenAI / compatible APIs (Ollama, Groq, Together, vLLM)
 ```
 
-**~1,050 lines of Python total.** The entire agent lives in a single flat package.
+**~1,600 lines of Python total.** The entire agent lives in a single flat package.
 
 ## Setup and Running
 

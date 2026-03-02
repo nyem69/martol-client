@@ -15,7 +15,9 @@ Claude Code is Anthropic's agentic coding tool that can read, modify, and execut
 | Approval gating | Claude Code's permission system | Hook into Claude Code's built-in permission prompts. When it asks for permission, relay to the chat room and pipe back the answer. |
 | Working directory | Current working directory | Operator `cd`s to the target project, then runs `python -m martol_agent --mode claude-code`. |
 
-## Architecture: Stream-JSON Subprocess Bridge
+## Architecture: Claude Agent SDK Bridge
+
+> **Implementation note:** The original design proposed a raw subprocess with stream-JSON I/O on stdin/stdout. During implementation, we switched to the `claude-agent-sdk` Python SDK (`ClaudeSDKClient`), which provides a higher-level, more stable API. The SDK handles stream-JSON plumbing internally and exposes a `can_use_tool` callback for permission interception — much cleaner than parsing subprocess output. The architecture diagram below reflects the implemented approach.
 
 ```
 martol chat room
@@ -24,10 +26,12 @@ martol chat room
       v
 ClaudeCodeWrapper
       |
-      | stdin: stream-json (user prompts from chat)
-      | stdout: stream-json (responses, tool use, permission prompts)
+      | claude-agent-sdk (ClaudeSDKClient)
+      | .query() → sends prompts
+      | .receive_response() → collects responses
+      | can_use_tool callback → permission relay
       v
-claude subprocess (--input-format stream-json --output-format stream-json)
+Claude Code (managed by SDK)
       |
       | operates on project files in cwd
       v
@@ -38,31 +42,30 @@ local filesystem
 
 1. **Chat message arrives** via WebSocket
 2. `ClaudeCodeWrapper` checks `_should_respond()` (same mention/all logic)
-3. Message is written to Claude Code's stdin as a stream-json prompt
+3. Message is sent to Claude Code via `client.query(prompt)`
 4. Claude Code processes the prompt, potentially using tools (Read, Edit, Bash, etc.)
-5. **Text responses** from Claude Code's stdout are sent back to the chat room
-6. **Permission prompts** (Claude Code asking to run a command or edit a file) are relayed to the chat room via `action_submit` through MCP HTTP
-7. Approval/denial is piped back to Claude Code's stdin
-8. Claude Code continues or aborts based on the answer
+5. **Text responses** are collected via `client.receive_response()` and sent back to the chat room
+6. **Permission prompts** trigger the `can_use_tool` callback, which relays to the chat room via `action_submit` through MCP HTTP
+7. The callback returns `PermissionResultAllow` or `PermissionResultDeny` based on approval polling
+8. Claude Code continues or aborts based on the result
 
-### Stream-JSON Protocol
+### SDK API
 
-Claude Code's `--input-format stream-json` accepts newline-delimited JSON on stdin:
+The `claude-agent-sdk` provides `ClaudeSDKClient` for persistent sessions:
 
-```json
-{"type": "user", "content": "read the README and summarize it"}
+```python
+client = ClaudeSDKClient(options=ClaudeAgentOptions(
+    system_prompt={"type": "preset", "preset": "claude_code", "append": "..."},
+    permission_mode="default",
+    can_use_tool=handle_permission,  # async callback
+    cwd=os.getcwd(),
+))
+await client.connect()
+await client.query("read the README and summarize it")
+async for message in client.receive_response():
+    # AssistantMessage with TextBlock content
+    # ResultMessage with success/error
 ```
-
-Claude Code's `--output-format stream-json` emits newline-delimited JSON on stdout:
-
-```json
-{"type": "assistant", "subtype": "text", "text": "Here's a summary..."}
-{"type": "tool_use", "name": "Read", "input": {"file_path": "README.md"}}
-{"type": "permission_request", "tool": "Bash", "input": {"command": "npm test"}}
-{"type": "result", "subtype": "text", "text": "All 42 tests passed."}
-```
-
-> Note: Exact stream-json schema needs verification against Claude Code's actual output. The above is illustrative.
 
 ### Permission Relay Flow
 
@@ -70,17 +73,20 @@ Claude Code's `--output-format stream-json` emits newline-delimited JSON on stdo
 Claude Code wants to run: Bash("npm test")
       |
       v
-ClaudeCodeWrapper detects permission_request in stream-json
+SDK calls can_use_tool(tool_name, input_data, context)
       |
       v
-Posts to chat room: "Claude Code wants to run: `npm test` — approve?"
-Also submits via MCP HTTP: action_submit(action_type="code_write", ...)
+_handle_permission posts to chat: "Permission request: Run command: `npm test`"
+Also submits via MCP HTTP: action_submit(action_type="code_modify", ...)
       |
       v
-Room member approves/denies
+_wait_for_approval polls action_status every 3s (up to 5 min)
       |
       v
-ClaudeCodeWrapper writes approval/denial to Claude Code's stdin
+Room member approves/denies via martol UI
+      |
+      v
+Returns PermissionResultAllow or PermissionResultDeny
       |
       v
 Claude Code proceeds or skips the tool
@@ -91,17 +97,16 @@ Claude Code proceeds or skips the tool
 ### `ClaudeCodeWrapper` (new file: `martol_agent/claude_code_wrapper.py`)
 
 Responsibilities:
-- Manage Claude Code subprocess lifecycle (spawn, monitor, restart)
-- Bridge WebSocket messages to/from Claude Code's stream-json stdin/stdout
-- Parse stream-json output to extract text responses and permission prompts
-- Relay permission prompts to the chat room via action_submit
-- Handle graceful shutdown (kill subprocess on Ctrl+C)
+- Manage Claude Code SDK session lifecycle (connect, disconnect, restart)
+- Bridge WebSocket messages to/from Claude Code via `ClaudeSDKClient`
+- Relay tool permission requests to the chat room via `can_use_tool` callback + `action_submit`
+- Handle graceful shutdown (farewell message, disconnect SDK, close WebSocket)
 
 Key differences from `AgentWrapper`:
 - No `LLMProvider` — Claude Code handles its own LLM calls
 - No `TOOLS` — Claude Code has its own built-in tools
 - No tool loop — Claude Code manages tool iteration internally
-- Subprocess lifecycle management instead of HTTP API calls
+- SDK session management instead of HTTP API calls
 
 ### CLI Changes (`wrapper.py` or `__main__.py`)
 
@@ -127,39 +132,35 @@ CLAUDE_CODE_PERMISSION_MODE=default  # Permission mode (default prompts for appr
 CLAUDE_CODE_ALLOWED_TOOLS=           # Restrict available tools (optional)
 ```
 
-## Subprocess Management
+## Session Management
 
-### Spawning
+### Starting
 
-Claude Code is spawned as an async subprocess with stream-json I/O:
+A `ClaudeSDKClient` is created with the project's working directory and a `can_use_tool` callback:
 
 ```python
-proc = await asyncio.create_subprocess_exec(
-    "claude",
-    "--input-format", "stream-json",
-    "--output-format", "stream-json",
-    "--permission-mode", "default",
-    "--system-prompt", system_prompt,
-    stdin=asyncio.subprocess.PIPE,
-    stdout=asyncio.subprocess.PIPE,
-    stderr=asyncio.subprocess.PIPE,
+options = ClaudeAgentOptions(
+    system_prompt={"type": "preset", "preset": "claude_code", "append": system_append},
+    permission_mode="default",
+    can_use_tool=self._handle_permission,
+    cwd=os.getcwd(),
 )
+client = ClaudeSDKClient(options=options)
+await client.connect()
 ```
-
-The `CLAUDECODE` environment variable must be unset to avoid the nesting check when running from within a Claude Code session during development.
 
 ### Lifecycle
 
-- **Start**: Spawned on first WebSocket connection
-- **Monitor**: Watch for subprocess exit, restart if unexpected
-- **Shutdown**: Kill subprocess on Ctrl+C / SIGTERM, send farewell to room
-- **Crash recovery**: If Claude Code crashes, log the error and restart with a new session
+- **Start**: SDK session created after first WebSocket connection
+- **Reconnect**: On WebSocket disconnect, SDK session is stopped and recreated on reconnect
+- **Shutdown**: Send farewell message, disconnect SDK session, close WebSocket
+- **Error recovery**: If SDK errors, logged with `exc_info=True` and swallowed
 
 ### Backpressure
 
-- One message at a time: queue incoming chat messages, feed to Claude Code sequentially
+- One message at a time: `asyncio.Lock()` serializes prompts to Claude Code
 - Typing indicator while Claude Code is processing
-- Timeout: if Claude Code doesn't respond within N seconds, log warning (but don't kill — it may be doing real work)
+- Long responses chunked at 4000 characters
 
 ## Alternatives Considered
 
@@ -175,10 +176,10 @@ Spawn Claude Code in a pseudo-terminal, parse terminal output, detect permission
 
 **Rejected because:** Fragile — relies on parsing ANSI escape codes and terminal formatting. No structured protocol. Hard to maintain across Claude Code versions.
 
-## Open Questions
+## Resolved Questions
 
-1. **Stream-JSON schema**: The exact format of permission prompts in stream-json output needs to be verified by testing outside a Claude Code session.
-2. **Permission response format**: How to pipe approval/denial back via stream-json stdin — need to verify the protocol.
-3. **Multiple users**: When a permission prompt is posted to the room, any authorized member can approve. Need to decide if we wait for the first response or require a specific role.
-4. **Long-running operations**: Claude Code can take minutes for complex tasks. How to handle WebSocket keepalive and typing indicators during extended processing.
-5. **Output chunking**: Claude Code may produce very long outputs. Should we chunk them into multiple chat messages or truncate?
+1. ~~**Stream-JSON schema**~~ — Resolved by using the `claude-agent-sdk` Python SDK instead of raw stream-JSON. The SDK handles protocol details internally.
+2. ~~**Permission response format**~~ — Resolved via the `can_use_tool` callback which returns `PermissionResultAllow`/`PermissionResultDeny`.
+3. **Multiple users** — Current implementation: any authorized member can approve via the martol UI. The `_wait_for_approval` method polls `action_status` and accepts the first approval/denial.
+4. **Long-running operations** — Handled by `asyncio.Lock()` serializing prompts. Typing indicator stays active during processing. No timeout on Claude Code operations (they may legitimately take minutes).
+5. **Output chunking** — Implemented: responses are chunked at 4000 characters with only the first chunk replying to the original message.

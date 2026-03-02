@@ -12,7 +12,7 @@ import asyncio
 import json
 import logging
 import os
-import signal
+import time
 import uuid
 from typing import Any
 
@@ -37,7 +37,6 @@ try:
         AssistantMessage,
         ResultMessage,
         TextBlock,
-        ToolUseBlock,
         PermissionResultAllow,
         PermissionResultDeny,
         ToolPermissionContext,
@@ -95,10 +94,6 @@ class ClaudeCodeWrapper:
 
         # Lock to serialize prompts (one at a time)
         self._responding = asyncio.Lock()
-
-        # Pending permission requests: request_id -> asyncio.Future
-        self._pending_approvals: dict[int, asyncio.Future] = {}
-        self._approval_counter = 0
 
     # ── Connection ───────────────────────────────────────────────────
 
@@ -264,7 +259,11 @@ class ClaudeCodeWrapper:
 
         # Submit via MCP for approval
         result = await self._mcp_call("action_submit", {
-            "action_type": "code_write" if tool_name in ("Write", "Edit") else "code_modify",
+            "action_type": (
+                "code_write" if tool_name in ("Write", "Edit", "NotebookEdit") else
+                "code_review" if tool_name in ("Read", "Grep", "Glob", "LS") else
+                "code_modify"
+            ),
             "risk_level": risk,
             "description": description,
             "payload": {"tool": tool_name, "input": input_data},
@@ -288,7 +287,6 @@ class ClaudeCodeWrapper:
 
     async def _wait_for_approval(self, action_id: int, timeout: float = 300) -> bool:
         """Poll action_status until approved, denied, or timeout."""
-        import time
         start = time.monotonic()
         poll_interval = 3  # seconds
 
@@ -355,6 +353,9 @@ class ClaudeCodeWrapper:
             name = msg.get("senderName", "")
             status = msg.get("status", "")
             log.info("Presence: %s is %s", name, status)
+
+        elif msg_type == "id_map":
+            log.debug("ID mappings: %s", msg.get("mappings", []))
 
         elif msg_type == "error":
             code = msg.get("code", "")
@@ -536,8 +537,8 @@ class ClaudeCodeWrapper:
     async def _shutdown(self) -> None:
         """Send farewell message, stop Claude Code, and close WebSocket."""
         try:
-            await self._stop_claude_session()
             await self.send_message("[AI Agent] Disconnecting. Goodbye!")
+            await self._stop_claude_session()
             if self.ws:
                 await self.ws.close()
         except Exception:
