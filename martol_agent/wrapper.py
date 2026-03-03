@@ -278,7 +278,8 @@ class AgentWrapper:
             body = payload.get("body", "")
             role = payload.get("senderRole", "")
 
-            log.info("[%s/%s] %s", sender, role, body[:120])
+            log.debug("[%s/%s] %s", sender, role, body[:120])
+            log.info("[%s/%s] message received (%d chars)", sender, role, len(body))
 
             # Append to context window
             self._append_context_from_ws(payload)
@@ -590,7 +591,8 @@ class AgentWrapper:
 
         try:
             await self.ws.send(json.dumps(payload))
-            log.info("Sent message: %s", body[:80])
+            log.debug("Sent message: %s", body[:80])
+            log.info("Sent message (%d chars)", len(body))
             return True
         except Exception as e:
             log.error("Failed to send: %s", e)
