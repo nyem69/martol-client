@@ -33,6 +33,7 @@ import os
 import signal
 import ssl
 import sys
+import time
 import uuid
 from typing import Any
 from urllib.parse import urlparse
@@ -113,6 +114,23 @@ def _sanitize_tool_result(result: dict | None) -> dict:
     return result
 
 
+class RateLimiter:
+    """Simple token bucket rate limiter."""
+
+    def __init__(self, max_calls: int, window_seconds: float):
+        self.max_calls = max_calls
+        self.window = window_seconds
+        self.calls: list[float] = []
+
+    def allow(self) -> bool:
+        now = time.monotonic()
+        self.calls = [t for t in self.calls if now - t < self.window]
+        if len(self.calls) >= self.max_calls:
+            return False
+        self.calls.append(now)
+        return True
+
+
 def derive_mcp_url(ws_url: str) -> str:
     """Derive MCP HTTP base URL from the WebSocket URL.
 
@@ -136,6 +154,7 @@ class AgentWrapper:
         mcp_url: str,
         context_size: int = 50,
         respond_mode: str = "mention",
+        rate_limit: int = 10,
     ):
         self.ws_url = ws_url
         self.api_key = api_key
@@ -157,6 +176,9 @@ class AgentWrapper:
 
         # Lock to serialize LLM calls (one response at a time)
         self._responding = asyncio.Lock()
+
+        # LLM call rate limiter
+        self.llm_limiter = RateLimiter(max_calls=rate_limit, window_seconds=60)
 
     # ── Connection ───────────────────────────────────────────────────
 
@@ -387,6 +409,10 @@ class AgentWrapper:
 
     async def _generate_response(self, trigger: dict) -> None:
         """Generate and send an LLM response."""
+        if not self.llm_limiter.allow():
+            log.warning("LLM rate limit hit — skipping response")
+            return
+
         async with self._responding:
             try:
                 await self.send_typing(True)
@@ -692,6 +718,12 @@ async def main() -> None:
         help="Response mode: mention (only @mentions) or all",
     )
     parser.add_argument(
+        "--rate-limit",
+        type=int,
+        default=int(os.environ.get("LLM_RATE_LIMIT", "10")),
+        help="Max LLM calls per minute (default: 10)",
+    )
+    parser.add_argument(
         "--mode",
         default=os.environ.get("AGENT_MODE", "provider"),
         choices=["provider", "claude-code"],
@@ -776,6 +808,7 @@ async def main() -> None:
             mcp_url=mcp_url,
             context_size=args.context,
             respond_mode=args.respond,
+            rate_limit=args.rate_limit,
         )
 
         log.info(
