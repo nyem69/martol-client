@@ -1,5 +1,10 @@
 # martol-client
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-green)](LICENSE)
+[![GitHub last commit](https://img.shields.io/github/last-commit/nyem69/martol-client)](https://github.com/nyem69/martol-client/commits/main)
+[![GitHub issues](https://img.shields.io/github/issues/nyem69/martol-client)](https://github.com/nyem69/martol-client/issues)
+
 Python agent wrapper for [martol](https://github.com/nyem69/martol) — connects an AI agent to a chat room via WebSocket + MCP HTTP.
 
 ## How It Works
