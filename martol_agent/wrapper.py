@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import signal
+import ssl
 import sys
 import uuid
 from typing import Any
@@ -122,11 +123,17 @@ class AgentWrapper:
 
         while self.running and attempt < MAX_RECONNECT_ATTEMPTS:
             try:
+                # Enforce TLS in production
+                if not self.ws_url.startswith("wss://") and "localhost" not in self.ws_url and "127.0.0.1" not in self.ws_url:
+                    raise ValueError(f"Refusing non-TLS WebSocket URL: {self.ws_url}. Use wss:// for production.")
+
+                ssl_context = ssl.create_default_context() if self.ws_url.startswith("wss://") else None
+
                 url = f"{self.ws_url}?lastKnownId={self.last_known_id}"
                 headers = {"x-api-key": self.api_key}
 
                 log.info("Connecting to %s (attempt %d)...", self.ws_url, attempt + 1)
-                async with websockets.connect(url, extra_headers=headers) as ws:
+                async with websockets.connect(url, extra_headers=headers, ssl=ssl_context) as ws:
                     self.ws = ws
                     attempt = 0
                     log.info("Connected to room")
