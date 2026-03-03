@@ -103,6 +103,16 @@ cd /path/to/your/project
 python -m martol_agent --mode claude-code
 ```
 
+## Security
+
+API keys grant full control of your agent. Handle them carefully:
+
+- **Never commit `.env` files** — they contain secrets
+- **Prefer `--api-key-file`** over environment variables — env vars are visible in `/proc/PID/environ`
+- **Use `wss://`** for production — the client rejects non-TLS URLs by default
+- **Restrict Claude Code tools** — set `CLAUDE_CODE_ALLOWED_TOOLS=Read,Grep,Glob` to limit filesystem access
+- **Rotate keys** if you suspect compromise — revoke in the Martol chat room's member panel
+
 ## Providers
 
 | Provider | Flag | Default Model |
