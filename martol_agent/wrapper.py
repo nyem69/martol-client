@@ -68,6 +68,7 @@ MAX_RECONNECT_DELAY = 30
 BASE_RECONNECT_DELAY = 1
 MAX_RECONNECT_ATTEMPTS = 20
 MAX_TOOL_ITERATIONS = 5
+MAX_TOOL_RESULT_LENGTH = 8000  # Truncate large results
 
 # Known MCP tool schemas — reject unexpected fields
 ALLOWED_TOOL_FIELDS = {
@@ -92,6 +93,24 @@ def _validate_tool_args(name: str, args: dict) -> dict:
     if stripped:
         log.warning("Stripped unexpected fields from %s: %s", name, stripped)
     return cleaned
+
+
+def _sanitize_tool_result(result: dict | None) -> dict:
+    """Truncate and clean tool results before feeding to LLM."""
+    if not result:
+        return {"ok": False, "error": "No result"}
+    # Serialize and truncate
+    serialized = json.dumps(result)
+    if len(serialized) > MAX_TOOL_RESULT_LENGTH:
+        log.warning("Tool result truncated from %d to %d chars", len(serialized), MAX_TOOL_RESULT_LENGTH)
+        try:
+            result = json.loads(serialized[:MAX_TOOL_RESULT_LENGTH - 1] + "}")
+        except json.JSONDecodeError:
+            result = {"ok": True, "data": serialized[:MAX_TOOL_RESULT_LENGTH], "truncated": True}
+        # Fallback if truncation breaks JSON
+        if not isinstance(result, dict):
+            result = {"ok": True, "data": serialized[:MAX_TOOL_RESULT_LENGTH], "truncated": True}
+    return result
 
 
 def derive_mcp_url(ws_url: str) -> str:
@@ -501,9 +520,10 @@ class AgentWrapper:
             )
             results = []
             for tr in tool_results:
+                clean_result = _sanitize_tool_result(tr["result"])
                 results.append(
                     AnthropicProvider.format_tool_result(
-                        tr["tool_call"].id, tr["result"] or {"ok": False}
+                        tr["tool_call"].id, clean_result
                     )
                 )
             messages.append({"role": "user", "content": results})
@@ -514,9 +534,10 @@ class AgentWrapper:
                 OpenAICompatProvider.format_assistant_message(response)
             )
             for tr in tool_results:
+                clean_result = _sanitize_tool_result(tr["result"])
                 messages.append(
                     OpenAICompatProvider.format_tool_result(
-                        tr["tool_call"].id, tr["result"] or {"ok": False}
+                        tr["tool_call"].id, clean_result
                     )
                 )
 
