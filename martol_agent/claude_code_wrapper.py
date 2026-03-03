@@ -9,6 +9,9 @@ relayed to the room for approval via action_submit.
 """
 
 import asyncio
+import base64
+import hashlib
+import hmac as hmac_mod
 import json
 import logging
 import os
@@ -72,12 +75,15 @@ class ClaudeCodeWrapper:
         claude_model: str | None = None,
         claude_permission_mode: str = "default",
         claude_allowed_tools: list[str] | None = None,
+        hmac_secret: str | None = None,
     ):
         self.ws_url = ws_url
         self.api_key = api_key
         self.mcp_url = mcp_url
         self.context_size = context_size
         self.respond_mode = respond_mode
+        self.hmac_secret = hmac_secret
+        self._hmac_warned = False
         self.claude_model = claude_model
         self.claude_permission_mode = claude_permission_mode
         self.claude_allowed_tools = claude_allowed_tools or []
@@ -334,7 +340,38 @@ class ClaudeCodeWrapper:
             except json.JSONDecodeError:
                 log.warning("Received non-JSON message, ignoring")
                 continue
+            if not self._verify_hmac(raw, msg):
+                continue
             await self._handle_message(msg)
+
+    def _verify_hmac(self, raw: str, msg: dict) -> bool:
+        """Verify HMAC signature on server messages (R6)."""
+        received_hmac = msg.pop("_hmac", None)
+        if not self.hmac_secret:
+            return True
+        if received_hmac is None:
+            if not self._hmac_warned:
+                log.warning("Server message missing _hmac — server may not support R6 signing yet")
+                self._hmac_warned = True
+            return True
+        raw_str = raw if isinstance(raw, str) else raw.decode()
+        hmac_suffix = ',"_hmac":"' + received_hmac + '"}'
+        if not raw_str.endswith(hmac_suffix):
+            log.warning("Unexpected _hmac position in message, dropping")
+            return False
+        original_json = raw_str[: -len(hmac_suffix)] + "}"
+        expected = hmac_mod.new(
+            self.hmac_secret.encode(), original_json.encode("utf-8"), hashlib.sha256
+        ).digest()
+        try:
+            received_bytes = base64.b64decode(received_hmac)
+        except Exception:
+            log.warning("Invalid _hmac encoding, dropping message")
+            return False
+        if not hmac_mod.compare_digest(expected, received_bytes):
+            log.warning("HMAC verification failed, dropping message (type=%s)", msg.get("type"))
+            return False
+        return True
 
     async def _handle_message(self, msg: dict[str, Any]) -> None:
         """Handle a server WebSocket message."""

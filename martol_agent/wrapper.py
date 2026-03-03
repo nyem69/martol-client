@@ -27,6 +27,9 @@ Environment variables (alternative to flags):
 
 import argparse
 import asyncio
+import base64
+import hashlib
+import hmac as hmac_mod
 import json
 import logging
 import os
@@ -155,6 +158,7 @@ class AgentWrapper:
         context_size: int = 50,
         respond_mode: str = "mention",
         rate_limit: int = 10,
+        hmac_secret: str | None = None,
     ):
         self.ws_url = ws_url
         self.api_key = api_key
@@ -162,6 +166,8 @@ class AgentWrapper:
         self.mcp_url = mcp_url
         self.context_size = context_size
         self.respond_mode = respond_mode
+        self.hmac_secret = hmac_secret
+        self._hmac_warned = False
 
         self.ws: WebSocketClientProtocol | None = None
         self.last_known_id = 0
@@ -284,7 +290,47 @@ class AgentWrapper:
             except json.JSONDecodeError:
                 log.warning("Received non-JSON message, ignoring")
                 continue
+            if not self._verify_hmac(raw, msg):
+                continue
             await self._handle_message(msg)
+
+    def _verify_hmac(self, raw: str, msg: dict) -> bool:
+        """Verify HMAC signature on server messages (R6).
+
+        The server appends ,"_hmac":"<base64>" to the JSON via string concat.
+        To verify, we extract the original JSON by stripping the _hmac suffix,
+        ensuring byte-for-byte match with the signed content.
+
+        Returns True if the message should be processed, False to drop it.
+        """
+        received_hmac = msg.pop("_hmac", None)
+        if not self.hmac_secret:
+            return True
+        if received_hmac is None:
+            if not self._hmac_warned:
+                log.warning("Server message missing _hmac — server may not support R6 signing yet")
+                self._hmac_warned = True
+            return True  # Allow unsigned messages during migration
+        # Extract original JSON: server appends ,"_hmac":"..." at the end
+        raw_str = raw if isinstance(raw, str) else raw.decode()
+        hmac_suffix = ',"_hmac":"' + received_hmac + '"}'
+        if not raw_str.endswith(hmac_suffix):
+            log.warning("Unexpected _hmac position in message, dropping")
+            return False
+        original_json = raw_str[: -len(hmac_suffix)] + "}"
+        # Verify HMAC
+        expected = hmac_mod.new(
+            self.hmac_secret.encode(), original_json.encode("utf-8"), hashlib.sha256
+        ).digest()
+        try:
+            received_bytes = base64.b64decode(received_hmac)
+        except Exception:
+            log.warning("Invalid _hmac encoding, dropping message")
+            return False
+        if not hmac_mod.compare_digest(expected, received_bytes):
+            log.warning("HMAC verification failed, dropping message (type=%s)", msg.get("type"))
+            return False
+        return True
 
     async def _handle_message(self, msg: dict[str, Any]) -> None:
         """Handle a server WebSocket message."""
@@ -724,6 +770,11 @@ async def main() -> None:
         help="Max LLM calls per minute (default: 10)",
     )
     parser.add_argument(
+        "--hmac-secret",
+        default=os.environ.get("MARTOL_HMAC_SECRET"),
+        help="HMAC secret for verifying server message integrity (R6)",
+    )
+    parser.add_argument(
         "--mode",
         default=os.environ.get("AGENT_MODE", "provider"),
         choices=["provider", "claude-code"],
@@ -779,6 +830,7 @@ async def main() -> None:
             claude_model=args.claude_model,
             claude_permission_mode=args.claude_permission_mode,
             claude_allowed_tools=allowed_tools,
+            hmac_secret=args.hmac_secret,
         )
 
         log.info(
@@ -809,6 +861,7 @@ async def main() -> None:
             context_size=args.context,
             respond_mode=args.respond,
             rate_limit=args.rate_limit,
+            hmac_secret=args.hmac_secret,
         )
 
         log.info(
