@@ -55,6 +55,9 @@ MAX_RECONNECT_DELAY = 30
 BASE_RECONNECT_DELAY = 1
 MAX_RECONNECT_ATTEMPTS = 20
 
+# Default safe tools if no whitelist specified
+DEFAULT_SAFE_TOOLS = ["Read", "Grep", "Glob", "LS", "WebSearch", "WebFetch"]
+
 
 class ClaudeCodeWrapper:
     """Bridges a Martol chat room to a persistent Claude Code session."""
@@ -78,6 +81,11 @@ class ClaudeCodeWrapper:
         self.claude_model = claude_model
         self.claude_permission_mode = claude_permission_mode
         self.claude_allowed_tools = claude_allowed_tools or []
+
+        # Apply safe defaults if no whitelist specified
+        if not self.claude_allowed_tools:
+            log.info("No tool whitelist set — using safe defaults: %s", DEFAULT_SAFE_TOOLS)
+            self.claude_allowed_tools = list(DEFAULT_SAFE_TOOLS)
 
         self.ws: WebSocketClientProtocol | None = None
         self.last_known_id = 0
@@ -238,6 +246,11 @@ class ClaudeCodeWrapper:
         context: ToolPermissionContext,
     ) -> PermissionResultAllow | PermissionResultDeny:
         """Relay permission requests to the chat room via action_submit."""
+        # Hard-deny tools not in whitelist (if whitelist is configured)
+        if self.claude_allowed_tools and tool_name not in self.claude_allowed_tools:
+            log.warning("Tool %s blocked by whitelist", tool_name)
+            return PermissionResultDeny(message=f"Tool '{tool_name}' not in allowed list")
+
         # Format the tool call for human review
         if tool_name == "Bash":
             description = f"Run command: `{input_data.get('command', '')}`"
