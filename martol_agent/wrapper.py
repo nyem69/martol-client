@@ -69,6 +69,30 @@ BASE_RECONNECT_DELAY = 1
 MAX_RECONNECT_ATTEMPTS = 20
 MAX_TOOL_ITERATIONS = 5
 
+# Known MCP tool schemas — reject unexpected fields
+ALLOWED_TOOL_FIELDS = {
+    "chat_send": {"body", "reply_to"},
+    "chat_read": {"limit", "before_id"},
+    "chat_resync": set(),
+    "chat_join": set(),
+    "chat_who": set(),
+    "action_submit": {"action_type", "risk_level", "description", "payload", "trigger_message_id"},
+    "action_status": {"action_id"},
+}
+
+
+def _validate_tool_args(name: str, args: dict) -> dict:
+    """Strip unexpected fields from tool arguments."""
+    allowed = ALLOWED_TOOL_FIELDS.get(name)
+    if allowed is None:
+        log.warning("Unknown tool %s — passing args through", name)
+        return args
+    cleaned = {k: v for k, v in args.items() if k in allowed}
+    stripped = set(args.keys()) - allowed
+    if stripped:
+        log.warning("Stripped unexpected fields from %s: %s", name, stripped)
+    return cleaned
+
 
 def derive_mcp_url(ws_url: str) -> str:
     """Derive MCP HTTP base URL from the WebSocket URL.
@@ -437,8 +461,9 @@ class AgentWrapper:
             # Execute tool calls via MCP HTTP
             tool_results: list[dict] = []
             for tc in response.tool_calls:
-                log.info("Executing tool: %s(%s)", tc.name, tc.arguments)
-                result = await self._mcp_call(tc.name, tc.arguments)
+                clean_args = _validate_tool_args(tc.name, tc.arguments)
+                log.info("Executing tool: %s(%s)", tc.name, json.dumps(clean_args)[:200])
+                result = await self._mcp_call(tc.name, clean_args)
                 log.info("Tool result: %s", json.dumps(result)[:200])
                 tool_results.append({"tool_call": tc, "result": result})
 
