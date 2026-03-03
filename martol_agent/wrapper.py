@@ -606,6 +606,10 @@ async def main() -> None:
         "--api-key", default=os.environ.get("MARTOL_API_KEY"), help="Martol API key"
     )
     parser.add_argument(
+        "--api-key-file", default=os.environ.get("MARTOL_API_KEY_FILE"),
+        help="Path to file containing the Martol API key (more secure than env var)",
+    )
+    parser.add_argument(
         "--mcp-url",
         default=os.environ.get("MARTOL_MCP_URL"),
         help="MCP HTTP base URL (derived from WS URL if omitted)",
@@ -666,9 +670,15 @@ async def main() -> None:
     if not args.url:
         print("Error: WebSocket URL required (--url or MARTOL_WS_URL)")
         sys.exit(1)
-    if not args.api_key:
-        print("Error: Martol API key required (--api-key or MARTOL_API_KEY)")
-        sys.exit(1)
+
+    # Resolve API key: file > env/CLI arg
+    api_key = args.api_key
+    if args.api_key_file:
+        with open(args.api_key_file, 'r') as f:
+            api_key = f.read().strip()
+    if not api_key:
+        parser.error("--api-key or --api-key-file or MARTOL_API_KEY required")
+    args.api_key = api_key
 
     # Derive MCP URL if not provided
     mcp_url = args.mcp_url or derive_mcp_url(args.url)
