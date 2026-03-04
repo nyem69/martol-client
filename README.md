@@ -51,39 +51,64 @@ python -m martol_agent \
   --ai-key <anthropic-key>
 ```
 
-## Use Cases
+## Example Session
 
-### DevOps Assistant
-```
-You:    @claude:backend deploy the latest tag to staging
-Agent:  I'll submit a deploy action for the latest tag to staging.
-        → action_submit(action_type="deploy", risk_level="medium", ...)
-        ✓ Awaiting approval from a maintainer.
-```
-
-### Code Review Bot
-```
-You:    @claude:backend review the auth changes in PR #42
-Agent:  I'll review the changes and submit my findings.
-        → action_submit(action_type="code_review", risk_level="low", ...)
-```
-
-### Engineering Support
-```
-You:    @claude:backend how does our rate limiter handle burst traffic?
-Agent:  Based on the discussion above, the rate limiter uses a token bucket
-        algorithm with a burst capacity of 100 requests...
-```
-
-### Multi-Step Workflows
-The tool loop (up to 5 iterations) lets the agent submit an action, poll its approval status, and follow up.
+A room with two AI agents (`claude` on Anthropic, `qwen3` on local Ollama) and a human developer:
 
 ```
-You:    @claude:backend write a migration to add an index on users.email, then deploy it
-Agent:  → action_submit(action_type="code_write", ...)
-        → action_status(action_id=17)  — approved
-        → action_submit(action_type="deploy", ...)
+┌─ Test Room ─────────────────────────────── 3 online ─┐
+│                                                       │
+│  azmi    @qwen3 what does our auth middleware do?     │
+│                                                       │
+│  qwen3   The auth middleware in middleware/auth.js     │
+│  AGENT   checks for a valid JWT in the Authorization  │
+│          header. If missing or expired, it returns     │
+│          401. It also attaches `req.user` with the     │
+│          decoded payload for downstream handlers.      │
+│                                                       │
+│  azmi    ↩ qwen3: can it handle refresh tokens?       │
+│                                                       │
+│  qwen3   Not currently. It only validates access       │
+│  AGENT   tokens. You'd need to add a /refresh          │
+│          endpoint that issues new access tokens         │
+│          from a valid refresh token.                    │
+│                                                       │
+│  azmi    @claude review the auth middleware and         │
+│          suggest improvements                          │
+│                                                       │
+│  claude  I'll review the code and submit my findings.  │
+│  AGENT   → action_submit(action_type="code_review",   │
+│             risk_level="low",                          │
+│             description="Auth middleware review")       │
+│                                                       │
+│          Found 3 issues:                               │
+│          1. No refresh token rotation                  │
+│          2. JWT secret is hardcoded in the file        │
+│          3. Missing rate limit on failed attempts       │
+│                                                       │
+│  azmi    ↩ claude: fix issue #2, move the secret       │
+│          to environment variables                      │
+│                                                       │
+│  claude  → action_submit(action_type="code_modify",   │
+│  AGENT     risk_level="medium",                        │
+│             description="Move JWT secret to env var")  │
+│          ⏳ Awaiting approval...                       │
+│                                                       │
+│  azmi    ✓ approved                                    │
+│                                                       │
+│  claude  Done. Changed `const SECRET = "..."` to       │
+│  AGENT   `const SECRET = process.env.JWT_SECRET` and   │
+│          added JWT_SECRET to .env.example.             │
+│                                                       │
+└───────────────────────────────────────────────────────┘
 ```
+
+Key features shown:
+- **Multiple agents** in one room with different LLM backends
+- **@mention** triggers a specific agent
+- **Reply-to** continues the conversation without re-mentioning
+- **Structured actions** go through the server's role × risk approval matrix
+- **Multi-step workflows** — review, then modify based on findings
 
 ### Self-Hosted / Private LLM
 Use any OpenAI-compatible API (Ollama, vLLM, etc.) to keep all data on your own infrastructure.
