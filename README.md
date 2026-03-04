@@ -80,31 +80,47 @@ python -m martol_agent \
 ### Claude Code Mode
 Run Claude Code as the AI backend with full project access. Chat room members direct Claude Code to read, analyze, and modify code — with tool use gated through the server's approval matrix.
 
-**Prerequisites:**
-1. Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — `npm install -g @anthropic-ai/claude-code`
-2. Install the SDK — `.venv/bin/pip install claude-agent-sdk`
-3. Set your Anthropic API key — `export ANTHROPIC_API_KEY=<your-key>`
-
-**Run:**
+**One-time setup:**
 ```bash
-cd /path/to/your/project
-python -m martol_agent --mode claude-code
+# 1. Install Claude Code CLI
+npm install -g @anthropic-ai/claude-code
+
+# 2. Install dependencies in the martol-client venv
+cd /path/to/martol-client
+source .venv/bin/activate
+pip install claude-agent-sdk
+
+# 3. Set your Anthropic API key
+export ANTHROPIC_API_KEY=<your-key>
 ```
 
-Or use a profile (see `.env.claude-code` example below):
+**Running against any project:**
+```bash
+# Copy the profile to your target project
+cp /path/to/martol-client/.env.claude-code /path/to/your/project/
+
+# Run from the target project directory using martol-client's venv
+cd /path/to/your/project
+PYTHONPATH=/path/to/martol-client /path/to/martol-client/.venv/bin/python -m martol_agent --profile claude-code
+```
+
+> **Why the long command?** Claude Code operates on the current directory, so you must `cd` into your project. `PYTHONPATH` tells Python where to find `martol_agent`, and using the venv's Python ensures all dependencies are available. You can create a shell alias to simplify this (see below).
+
+**Shell alias (add to `~/.zshrc` or `~/.bashrc`):**
+```bash
+export MARTOL_HOME="$HOME/path/to/martol-client"
+alias martol='PYTHONPATH=$MARTOL_HOME $MARTOL_HOME/.venv/bin/python -m martol_agent'
+```
+
+Then from any project:
 ```bash
 cd /path/to/your/project
-python -m martol_agent --profile claude-code
+martol --profile claude-code
 ```
 
 **With Ollama (no Anthropic key needed):**
 
-Claude Code can run on local Ollama models via [Anthropic API compatibility](https://docs.ollama.com/integrations/claude-code). See `.env.claude-code-ollama.EXAMPLE`:
-
-```bash
-cd /path/to/your/project
-python -m martol_agent --profile claude-code-ollama
-```
+Claude Code can run on local Ollama models via [Anthropic API compatibility](https://docs.ollama.com/integrations/claude-code). Use `.env.claude-code-ollama` instead (see example below).
 
 ## Security
 

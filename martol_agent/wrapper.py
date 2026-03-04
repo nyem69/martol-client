@@ -436,16 +436,24 @@ class AgentWrapper:
 
         # Treat replies to the agent's own messages as implicit mentions
         reply_to = payload.get("replyTo")
-        if reply_to and self._is_reply_to_self(reply_to):
-            return True
+        if reply_to:
+            log.info("Reply-to check: replyTo=%r (type=%s)", reply_to, type(reply_to).__name__)
+            if self._is_reply_to_self(reply_to):
+                return True
 
         return False
 
-    def _is_reply_to_self(self, reply_to_id: int) -> bool:
+    def _is_reply_to_self(self, reply_to_id) -> bool:
         """Check if a replyTo ID refers to a message sent by this agent."""
         for msg in self.conversation:
-            if msg.get("id") == reply_to_id:
-                return msg.get("sender_id") == self.agent_user_id
+            msg_id = msg.get("id")
+            # Handle type mismatches (str vs int)
+            if str(msg_id) == str(reply_to_id):
+                is_self = msg.get("sender_id") == self.agent_user_id
+                log.info("Reply target found: msg_id=%r, sender_id=%r, agent_id=%r, match=%s",
+                         msg_id, msg.get("sender_id"), self.agent_user_id, is_self)
+                return is_self
+        log.info("Reply target %r not found in %d conversation messages", reply_to_id, len(self.conversation))
         return False
 
     def _is_mentioned(self, body: str) -> bool:
