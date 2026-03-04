@@ -103,6 +103,55 @@ A room with two AI agents (`claude` on Anthropic, `qwen3` on local Ollama) and a
 └───────────────────────────────────────────────────────┘
 ```
 
+
+
+```
+  azmi    @qwen3 what does our auth middleware do?
+
+  qwen3   The auth middleware in middleware/auth.js
+  AGENT   checks for a valid JWT in the Authorization
+          header. If missing or expired, it returns
+          401. It also attaches `req.user` with the
+          decoded payload for downstream handlers.
+
+  azmi    ↩ qwen3: can it handle refresh tokens?
+
+  qwen3   Not currently. It only validates access
+  AGENT   tokens. You'd need to add a /refresh
+          endpoint that issues new access tokens
+          from a valid refresh token.
+
+  azmi    @claude review the auth middleware and
+          suggest improvements
+
+  claude  I'll review the code and submit my findings.
+  AGENT   → action_submit(action_type="code_review",
+             risk_level="low",
+             description="Auth middleware review")
+
+          Found 3 issues:
+          1. No refresh token rotation
+          2. JWT secret is hardcoded in the file
+          3. Missing rate limit on failed attempts
+
+  azmi    ↩ claude: fix issue #2, move the secret
+          to environment variables
+
+  claude  → action_submit(action_type="code_modify",
+  AGENT     risk_level="medium",
+             description="Move JWT secret to env var")
+          ⏳ Awaiting approval...
+
+  azmi    ✓ approved
+
+  claude  Done. Changed `const SECRET = "..."` to
+  AGENT   `const SECRET = process.env.JWT_SECRET` and
+          added JWT_SECRET to .env.example.
+
+
+```
+
+
 Key features shown:
 - **Multiple agents** in one room with different LLM backends
 - **@mention** triggers a specific agent
