@@ -284,6 +284,7 @@ class ClaudeCodeWrapper:
         )
 
         # Submit via MCP for approval
+        # [C1] Include trigger_message_id — required by tool schema
         result = await self._mcp_call("action_submit", {
             "action_type": (
                 "code_write" if tool_name in ("Write", "Edit", "NotebookEdit") else
@@ -291,6 +292,7 @@ class ClaudeCodeWrapper:
                 "code_modify"
             ),
             "risk_level": risk,
+            "trigger_message_id": self.last_known_id,
             "description": description,
             "payload": {"tool": tool_name, "input": input_data},
         })
