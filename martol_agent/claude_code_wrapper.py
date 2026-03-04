@@ -253,7 +253,7 @@ class ClaudeCodeWrapper:
     ) -> PermissionResultAllow | PermissionResultDeny:
         """Relay permission requests to the chat room via action_submit."""
         # Hard-deny tools not in whitelist (if whitelist is configured)
-        if self.claude_allowed_tools and tool_name not in self.claude_allowed_tools:
+        if self.claude_allowed_tools and not self._tool_allowed(tool_name):
             log.warning("Tool %s blocked by whitelist", tool_name)
             return PermissionResultDeny(message=f"Tool '{tool_name}' not in allowed list")
 
@@ -310,6 +310,16 @@ class ClaudeCodeWrapper:
         # If action_submit failed, deny by default
         log.warning("action_submit failed, denying tool %s", tool_name)
         return PermissionResultDeny(message="Could not submit for approval")
+
+    def _tool_allowed(self, tool_name: str) -> bool:
+        """Check if a tool is allowed by the whitelist. Supports wildcards (e.g. mcp__playwright__*)."""
+        for pattern in self.claude_allowed_tools:
+            if pattern.endswith("*"):
+                if tool_name.startswith(pattern[:-1]):
+                    return True
+            elif tool_name == pattern:
+                return True
+        return False
 
     async def _wait_for_approval(self, action_id: int, timeout: float = 300) -> bool:
         """Poll action_status until approved, denied, or timeout."""

@@ -10,3 +10,4 @@ venv/
 
 .env.*
 !.env.*.EXAMPLE
+.obsidian
