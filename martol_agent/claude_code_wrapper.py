@@ -509,7 +509,22 @@ class ClaudeCodeWrapper:
             return True
 
         body = payload.get("body", "")
-        return self._is_mentioned(body)
+        if self._is_mentioned(body):
+            return True
+
+        # Treat replies to the agent's own messages as implicit mentions
+        reply_to = payload.get("replyTo")
+        if reply_to and self._is_reply_to_self(reply_to):
+            return True
+
+        return False
+
+    def _is_reply_to_self(self, reply_to_id: int) -> bool:
+        """Check if a replyTo ID refers to a message sent by this agent."""
+        for msg in self.conversation:
+            if msg.get("id") == reply_to_id:
+                return msg.get("sender_id") == self.agent_user_id
+        return False
 
     def _is_mentioned(self, body: str) -> bool:
         """Check if the agent is mentioned in the message body."""
