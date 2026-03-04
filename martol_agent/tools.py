@@ -46,6 +46,88 @@ TOOLS: list[dict] = [
                     "type": "object",
                     "description": "Optional structured data for the action.",
                 },
+                "simulation": {
+                    "type": "object",
+                    "description": (
+                        "Optional structured preview of what this action will do. "
+                        "Displayed to human reviewers alongside the approval card. "
+                        "Note: previews are agent-declared, not server-verified."
+                    ),
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": [
+                                "code_diff",
+                                "shell_preview",
+                                "api_call",
+                                "file_ops",
+                                "custom",
+                            ],
+                            "description": "The kind of preview to render.",
+                        },
+                        "preview": {
+                            "type": "object",
+                            "description": (
+                                "Type-specific preview data. For code_diff: "
+                                "{file, diff, lines_added, lines_removed}. "
+                                "For shell_preview: {command, working_dir?, "
+                                "predicted_effects?}. For api_call: {method, "
+                                "url, headers?, body?}. For file_ops: "
+                                "{operations: [{path, op}]}. For custom: "
+                                "{markdown}."
+                            ),
+                        },
+                        "impact": {
+                            "type": "object",
+                            "description": "Estimated impact of the action.",
+                            "properties": {
+                                "files_modified": {
+                                    "type": "integer",
+                                    "description": "Number of files affected.",
+                                },
+                                "services_affected": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "maxItems": 20,
+                                    "description": "Services impacted.",
+                                },
+                                "reversible": {
+                                    "type": "boolean",
+                                    "description": (
+                                        "Whether the action can be undone. "
+                                        "false triggers server risk escalation."
+                                    ),
+                                },
+                            },
+                        },
+                        "risk_factors": {
+                            "type": "array",
+                            "maxItems": 10,
+                            "description": "Risk explanations shown to reviewer.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "factor": {
+                                        "type": "string",
+                                        "maxLength": 100,
+                                        "description": "Short risk label.",
+                                    },
+                                    "severity": {
+                                        "type": "string",
+                                        "enum": ["low", "medium", "high"],
+                                    },
+                                    "detail": {
+                                        "type": "string",
+                                        "maxLength": 500,
+                                        "description": "Explanation of the risk.",
+                                    },
+                                },
+                                "required": ["factor", "severity", "detail"],
+                            },
+                        },
+                    },
+                    "required": ["type", "preview"],
+                },
             },
             "required": [
                 "action_type",
