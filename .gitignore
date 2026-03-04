@@ -7,3 +7,6 @@ build/
 venv/
 .env
 .DS_Store
+
+.env.*
+!.env.*.EXAMPLE

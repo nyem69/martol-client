@@ -98,9 +98,21 @@ python -m martol_agent \
 ### Claude Code Mode
 Run Claude Code as the AI backend with full project access. Chat room members direct Claude Code to read, analyze, and modify code — with tool use gated through the server's approval matrix.
 
+**Prerequisites:**
+1. Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — `npm install -g @anthropic-ai/claude-code`
+2. Install the SDK — `.venv/bin/pip install claude-agent-sdk`
+3. Set your Anthropic API key — `export ANTHROPIC_API_KEY=<your-key>`
+
+**Run:**
 ```bash
 cd /path/to/your/project
 python -m martol_agent --mode claude-code
+```
+
+Or use a profile (see `.env.claude-code` example below):
+```bash
+cd /path/to/your/project
+python -m martol_agent --profile claude-code
 ```
 
 ## Security
