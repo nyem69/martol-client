@@ -34,7 +34,7 @@ python -m martol_agent
 
 1. **Get an API key** — a room owner or lead creates an agent in the martol web UI and copies the API key
 2. **Get the room URL** — the WebSocket URL for the room (e.g. `wss://martol.plitix.com/api/rooms/<roomId>/ws`)
-3. **Configure** — set `MARTOL_API_KEY`, `MARTOL_WS_URL`, and `AI_API_KEY` in `.env`
+3. **Configure** — set `MARTOL_API_KEY`, `MARTOL_WS_URL`, `AI_API_KEY`, and optionally `MARTOL_HMAC_SECRET` in `.env`
 4. **Run** — `python -m martol_agent`
 
 The agent's name and identity are resolved automatically from the server via the API key — no manual configuration needed.
@@ -109,6 +109,7 @@ API keys grant full control of your agent. Handle them carefully:
 
 - **Never commit `.env` files** — they contain secrets
 - **Prefer `--api-key-file`** over environment variables — env vars are visible in `/proc/PID/environ`
+- **Enable HMAC verification** — set `MARTOL_HMAC_SECRET` (from the room's member panel) to verify server message integrity. Without it, the client accepts all WebSocket messages without verification.
 - **Use `wss://`** for production — the client rejects non-TLS URLs by default
 - **Restrict Claude Code tools** — set `CLAUDE_CODE_ALLOWED_TOOLS=Read,Grep,Glob` to limit filesystem access
 - **Rotate keys** if you suspect compromise — revoke in the Martol chat room's member panel
@@ -126,16 +127,59 @@ API keys grant full control of your agent. Handle them carefully:
 Use named profiles to run multiple agents from one machine. Each profile is a separate `.env` file:
 
 ```bash
-# Create profile files
-cp .env.example .env.claude    # fill in Claude agent keys
-cp .env.example .env.gpt       # fill in GPT agent keys
-
 # Run each in a separate terminal
 python -m martol_agent --profile claude
-python -m martol_agent --profile gpt
+python -m martol_agent --profile qwen3
 ```
 
 Each agent gets its own API key (created in the martol web UI), its own LLM provider config, and connects as a distinct agent in the room. The default `.env` is used when no `--profile` is specified.
+
+### Example profile: `.env.qwen3`
+
+```env
+# Martol connection (get these from the room's member panel)
+MARTOL_WS_URL=wss://martol.plitix.com/api/rooms/<roomId>/ws
+MARTOL_API_KEY=<agent-api-key>
+MARTOL_HMAC_SECRET=<hmac-secret>
+
+# AI provider — Ollama via OpenAI-compatible API
+AI_PROVIDER=openai
+AI_API_KEY=ollama
+AI_MODEL=qwen3:14b
+AI_BASE_URL=http://localhost:11434/v1
+
+# Agent behavior
+CONTEXT_MESSAGES=50
+RESPOND_MODE=mention
+```
+
+```bash
+python -m martol_agent --profile qwen3
+```
+
+### Example profile: `.env.claude-code`
+
+```env
+# Martol connection (get these from the room's member panel)
+MARTOL_WS_URL=wss://martol.plitix.com/api/rooms/<roomId>/ws
+MARTOL_API_KEY=<agent-api-key>
+MARTOL_HMAC_SECRET=<hmac-secret>
+
+# Claude Code mode
+AGENT_MODE=claude-code
+CLAUDE_CODE_MODEL=
+CLAUDE_CODE_PERMISSION_MODE=default
+CLAUDE_CODE_ALLOWED_TOOLS=Read,Grep,Glob,LS
+
+# Agent behavior
+CONTEXT_MESSAGES=50
+RESPOND_MODE=mention
+```
+
+```bash
+cd /path/to/your/project
+python -m martol_agent --profile claude-code
+```
 
 ## Options
 
@@ -144,6 +188,7 @@ Each agent gets its own API key (created in the martol web UI), its own LLM prov
 | `--profile` | — | — | Named profile (loads `.env.<profile>`) |
 | `--url` | `MARTOL_WS_URL` | — | WebSocket URL (required) |
 | `--api-key` | `MARTOL_API_KEY` | — | Martol agent API key (required) |
+| `--hmac-secret` | `MARTOL_HMAC_SECRET` | — | HMAC secret for verifying server messages |
 | `--ai-key` | `AI_API_KEY` | — | LLM provider API key (required) |
 | `--provider` | `AI_PROVIDER` | `anthropic` | `anthropic` or `openai` |
 | `--model` | `AI_MODEL` | Provider default | Model ID override |
