@@ -279,6 +279,11 @@ class BaseWrapper:
             db_id = str(msg.get("dbId", ""))
             if server_seq and db_id:
                 self._id_map[server_seq] = db_id
+                # Prune if too large
+                if len(self._id_map) > self._SEEN_SEQ_MAX:
+                    keys = sorted(self._id_map.keys(), key=lambda k: int(k) if k.isdigit() else 0)
+                    for k in keys[:len(keys) // 2]:
+                        del self._id_map[k]
 
         elif msg_type == "error":
             log.warning("Server error: %s — %s", msg.get("code", ""), msg.get("message", ""))
