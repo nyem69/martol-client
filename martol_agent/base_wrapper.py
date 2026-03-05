@@ -6,11 +6,11 @@ import hmac as hmac_lib
 import json
 import logging
 import os
-import signal
+import re
 import ssl
 import stat
 import uuid
-from base64 import b64decode, b64encode
+from base64 import b64decode
 from urllib.parse import urlparse
 
 import aiohttp
@@ -391,7 +391,6 @@ class BaseWrapper:
 
     def _is_mentioned(self, body: str) -> bool:
         """Check if the agent is mentioned in the message body."""
-        import re
         if not self.agent_name:
             return False
         name = self.agent_name
