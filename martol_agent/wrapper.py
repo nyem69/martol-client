@@ -422,6 +422,9 @@ async def main() -> None:
         default=os.environ.get("CLAUDE_CODE_ALLOWED_TOOLS"),
         help="Comma-separated list of auto-approved Claude Code tools",
     )
+    parser.add_argument("--bypass-permissions-confirm", action="store_true",
+                        default=False,
+                        help="Required when using bypassPermissions mode. Confirms you understand the risks.")
     args = parser.parse_args()
 
     # Validate required args (common to both modes)
@@ -442,6 +445,14 @@ async def main() -> None:
     mcp_url = args.mcp_url or derive_mcp_url(args.url)
 
     if args.mode == "claude-code":
+        if args.claude_permission_mode == "bypassPermissions" and not args.bypass_permissions_confirm:
+            print("CRITICAL: bypassPermissions mode grants unrestricted shell/filesystem access to chat room users.")
+            print("Add --bypass-permissions-confirm to acknowledge this risk.")
+            sys.exit(1)
+
+        if args.claude_permission_mode == "bypassPermissions":
+            log.critical("Running with bypassPermissions — ALL tool calls will be auto-approved!")
+
         from martol_agent.claude_code_wrapper import ClaudeCodeWrapper
 
         allowed_tools = []
