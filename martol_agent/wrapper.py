@@ -143,7 +143,8 @@ class AgentWrapper(BaseWrapper):
         display = self.agent_name or "agent"
         await self.send_message(
             f"[AI Agent] {display} connected (powered by {provider_name}, model: {model_name}). "
-            f"I am an AI assistant. Responses should not be relied upon without verification."
+            f"I am an AI assistant. Responses should not be relied upon without verification. "
+            f"You can opt out of having your messages included in AI context via your room settings."
         )
 
     # ── Trigger ───────────────────────────────────────────────────────
@@ -222,6 +223,7 @@ class AgentWrapper(BaseWrapper):
 
         Maps chat messages to user/assistant roles based on sender.
         Pseudonymizes sender names for privacy (HI-02, HI-05).
+        Excludes messages from users who opted out of AI processing (HI-04).
         Groups consecutive same-role messages.
         """
         messages: list[dict] = []
@@ -234,6 +236,10 @@ class AgentWrapper(BaseWrapper):
             body = msg.get("body", "")
 
             if not body.strip():
+                continue
+
+            # Skip messages from users who opted out of AI context (HI-04)
+            if sender_id in self._ai_opt_out_users:
                 continue
 
             if sender_id == self.agent_user_id:

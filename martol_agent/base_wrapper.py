@@ -72,6 +72,9 @@ class BaseWrapper:
         self._seen_seq_ids: set[int] = set()
         self._SEEN_SEQ_MAX = 500
 
+        # Users who opted out of AI context (HI-04)
+        self._ai_opt_out_users: set[str] = set()
+
         # ID mapping: serverSeqId -> dbId
         self._id_map: dict[str, str] = {}
 
@@ -157,6 +160,15 @@ class BaseWrapper:
                     self.agent_name = m.get("name", "agent")
                     break
             member_count = len(members)
+
+            # Parse AI opt-out preferences (HI-04)
+            self._ai_opt_out_users = {
+                m["user_id"] for m in members
+                if m.get("ai_opt_out", False) and m.get("user_id")
+            }
+            if self._ai_opt_out_users:
+                log.info("AI opt-out: %d user(s) excluded from context", len(self._ai_opt_out_users))
+
             log.info("Identity: %s (id=%s) in room '%s' (%d members)",
                      self.agent_name, self.agent_user_id, self.room_name, member_count)
         else:

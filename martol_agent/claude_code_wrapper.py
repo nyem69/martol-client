@@ -91,7 +91,8 @@ class ClaudeCodeWrapper(BaseWrapper):
         await self.send_message(
             f"[AI Agent] {display} connected (powered by Claude Code, model: {model_display}). "
             f"I am an AI assistant with access to this project's codebase. "
-            f"Responses should not be relied upon without verification."
+            f"Responses should not be relied upon without verification. "
+            f"You can opt out of having your messages included in AI context via your room settings."
         )
 
     # ── Trigger ───────────────────────────────────────────────────────
