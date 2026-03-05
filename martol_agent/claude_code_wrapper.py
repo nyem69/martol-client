@@ -139,80 +139,13 @@ class ClaudeCodeWrapper(BaseWrapper):
             self.claude_client = None
             log.info("Claude Code session stopped")
 
-    # ── Connection override ──────────────────────────────────────────
+    # ── Lifecycle hooks ─────────────────────────────────────────────
 
-    async def connect(self) -> None:
-        """Connect with Claude Code session management."""
-        # Override to add Claude session start/stop around the base connect
-        self._http_session = None
-        import aiohttp
-        self._http_session = aiohttp.ClientSession()
-        attempt = 0
+    async def _on_connected(self):
+        await self._start_claude_session()
 
-        from martol_agent.base_wrapper import MAX_RECONNECT_ATTEMPTS, BASE_RECONNECT_DELAY, MAX_RECONNECT_DELAY
-        import ssl
-        import websockets
-        from urllib.parse import urlparse
-
-        while self._running and attempt < MAX_RECONNECT_ATTEMPTS:
-            try:
-                parsed = urlparse(self.ws_url)
-                is_local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
-                if not self.ws_url.startswith("wss://") and not is_local:
-                    raise ValueError(
-                        "WebSocket URL must use wss:// for non-local connections. "
-                        "Use ws:// only for localhost development."
-                    )
-                if not self.mcp_url.startswith("https://") and not is_local:
-                    raise ValueError(
-                        "MCP URL must use https:// for non-local connections."
-                    )
-
-                ssl_context = ssl.create_default_context() if self.ws_url.startswith("wss://") else None
-
-                url = f"{self.ws_url}?apiKey={self.api_key}"
-                if self.last_known_id:
-                    url += f"&lastKnownId={self.last_known_id}"
-
-                async with websockets.connect(
-                    url,
-                    additional_headers={"x-api-key": self.api_key},
-                    ssl=ssl_context,
-                    open_timeout=10,
-                    close_timeout=5,
-                    max_size=1_048_576,
-                    ping_interval=30,
-                    ping_timeout=30,
-                ) as ws:
-                    self.ws = ws
-                    attempt = 0
-                    log.info("Connected to %s", self.ws_url)
-
-                    if not self.agent_user_id:
-                        await self._startup_sync()
-
-                    await self._start_claude_session()
-                    await self._listen(ws)
-
-            except websockets.ConnectionClosedError as e:
-                if e.code == 4001:
-                    log.error("API key revoked (4001). Stopping permanently.")
-                    break
-                log.warning("Connection closed: %s", e)
-            except Exception as e:
-                log.warning("Connection error: %s", e)
-            finally:
-                await self._stop_claude_session()
-
-            if not self._running:
-                break
-
-            attempt += 1
-            delay = min(BASE_RECONNECT_DELAY * (2 ** (attempt - 1)), MAX_RECONNECT_DELAY)
-            log.info("Reconnecting in %ds (attempt %d/%d)...", delay, attempt, MAX_RECONNECT_ATTEMPTS)
-            await asyncio.sleep(delay)
-
-        await self._shutdown()
+    async def _on_disconnected(self):
+        await self._stop_claude_session()
 
     # ── Permission Handling ──────────────────────────────────────────
 

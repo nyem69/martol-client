@@ -122,6 +122,7 @@ class BaseWrapper:
                     if not self.agent_user_id:
                         await self._startup_sync()
 
+                    await self._on_connected()
                     await self._listen(ws)
 
             except websockets.ConnectionClosedError as e:
@@ -140,6 +141,7 @@ class BaseWrapper:
             log.info("Reconnecting in %ds (attempt %d/%d)...", delay, attempt, MAX_RECONNECT_ATTEMPTS)
             await asyncio.sleep(delay)
 
+        await self._on_disconnected()
         await self._shutdown()
 
     async def _startup_sync(self):
@@ -173,6 +175,14 @@ class BaseWrapper:
             log.info("Loaded %d messages from chat_resync", len(messages))
 
         await self._send_disclosure()
+
+    async def _on_connected(self):
+        """Called after WebSocket connection and startup sync. Override in subclasses."""
+        pass
+
+    async def _on_disconnected(self):
+        """Called during shutdown. Override in subclasses."""
+        pass
 
     async def _send_disclosure(self):
         """Send AI disclosure message. Override in subclasses for custom text."""
