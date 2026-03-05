@@ -98,6 +98,9 @@ class ClaudeCodeWrapper(BaseWrapper):
 
     async def _on_trigger(self, payload: dict):
         """Handle a message that should trigger a Claude Code response."""
+        if self._responding.locked():
+            log.info("Already generating response, skipping new trigger")
+            return
         asyncio.create_task(self._send_to_claude(payload))
 
     # ── Claude Code Session ──────────────────────────────────────────
