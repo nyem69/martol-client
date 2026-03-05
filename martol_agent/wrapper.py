@@ -64,34 +64,26 @@ ALLOWED_TOOL_FIELDS = {
 }
 
 
-def _validate_tool_args(name: str, args: dict) -> dict:
-    """Strip unexpected fields from tool arguments."""
-    allowed = ALLOWED_TOOL_FIELDS.get(name)
+def _validate_tool_args(tool_name: str, args: dict) -> dict:
+    """Validate and filter tool arguments to only known fields."""
+    allowed = ALLOWED_TOOL_FIELDS.get(tool_name)
     if allowed is None:
-        log.warning("Unknown tool %s — passing args through", name)
-        return args
-    cleaned = {k: v for k, v in args.items() if k in allowed}
-    stripped = set(args.keys()) - allowed
-    if stripped:
-        log.warning("Stripped unexpected fields from %s: %s", name, stripped)
-    return cleaned
+        log.warning("Unknown tool '%s' — rejecting all arguments", tool_name)
+        return {}
+    return {k: v for k, v in args.items() if k in allowed}
 
 
 def _sanitize_tool_result(result: dict | None) -> dict:
-    """Truncate and clean tool results before feeding to LLM."""
+    """Sanitize and size-limit tool results before passing to LLM."""
     if not result:
         return {"ok": False, "error": "No result"}
-    # Serialize and truncate
-    serialized = json.dumps(result)
+    try:
+        serialized = json.dumps(result)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "Result not serializable"}
     if len(serialized) > MAX_TOOL_RESULT_LENGTH:
         log.warning("Tool result truncated from %d to %d chars", len(serialized), MAX_TOOL_RESULT_LENGTH)
-        try:
-            result = json.loads(serialized[:MAX_TOOL_RESULT_LENGTH - 1] + "}")
-        except json.JSONDecodeError:
-            result = {"ok": True, "data": serialized[:MAX_TOOL_RESULT_LENGTH], "truncated": True}
-        # Fallback if truncation breaks JSON
-        if not isinstance(result, dict):
-            result = {"ok": True, "data": serialized[:MAX_TOOL_RESULT_LENGTH], "truncated": True}
+        return {"ok": True, "data": serialized[:MAX_TOOL_RESULT_LENGTH], "truncated": True}
     return result
 
 
