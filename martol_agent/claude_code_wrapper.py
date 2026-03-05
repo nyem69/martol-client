@@ -175,6 +175,19 @@ class ClaudeCodeWrapper(BaseWrapper):
                     log.warning("Path denied by CLAUDE_CODE_DENY_PATHS: %s", path)
                     return PermissionResultDeny(message=f"Access to '{basename}' is restricted")
 
+        # Block WebFetch to private/internal IP ranges (SSRF protection)
+        if tool_name == "WebFetch":
+            from urllib.parse import urlparse
+            import ipaddress
+            url = input_data.get("url", "")
+            hostname = urlparse(url).hostname or ""
+            try:
+                ip = ipaddress.ip_address(hostname)
+                if ip.is_private or ip.is_loopback or ip.is_link_local:
+                    return PermissionResultDeny(message=f"WebFetch blocked: {hostname} is a private/internal IP")
+            except ValueError:
+                pass  # hostname is a domain name, not an IP — allow
+
         # Hard-deny tools not in whitelist (if whitelist is configured)
         if self.claude_allowed_tools and not self._tool_allowed(tool_name):
             log.warning("Tool %s blocked by whitelist", tool_name)
