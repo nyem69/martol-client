@@ -154,15 +154,15 @@ class AgentWrapper(BaseWrapper):
 
     # ── Response Generation ──────────────────────────────────────────
 
-    async def _generate_response(self, trigger: dict) -> None:
+    async def _generate_response(self, payload: dict) -> None:
         """Generate and send an LLM response."""
-        if not self.llm_limiter.allow():
-            log.warning("LLM rate limit hit — skipping response")
-            return
-
         async with self._responding:
             try:
                 await self.send_typing(True)
+
+                if not self.llm_limiter.allow():
+                    log.warning("LLM rate limit exceeded, skipping")
+                    return
 
                 system = self._build_system_prompt()
                 messages = self._build_llm_messages()
@@ -170,10 +170,18 @@ class AgentWrapper(BaseWrapper):
                 log.info("Calling LLM with %d context messages...", len(messages))
                 response = await self.provider.chat(system, messages, TOOLS)
 
-                await self._process_response(response, trigger)
+                await self._process_response(response, payload)
 
+            except asyncio.TimeoutError:
+                log.error("LLM call timed out")
+                await self.send_message(
+                    "[AI Agent] Unable to respond — the request timed out. Please try again."
+                )
             except Exception as e:
-                log.error("Failed to generate response: %s", e, exc_info=True)
+                log.error("LLM call failed: %s", e)
+                await self.send_message(
+                    "[AI Agent] Unable to respond — the AI service may be experiencing issues."
+                )
             finally:
                 await self.send_typing(False)
 

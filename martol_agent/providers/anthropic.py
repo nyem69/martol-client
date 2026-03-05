@@ -15,7 +15,11 @@ class AnthropicProvider(LLMProvider):
     """Anthropic Claude API provider."""
 
     def __init__(self, api_key: str, model: str | None = None):
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
+        import httpx
+        self.client = anthropic.AsyncAnthropic(
+            api_key=api_key,
+            timeout=httpx.Timeout(120.0, connect=10.0),
+        )
         self.model = model or "claude-sonnet-4-20250514"
 
     async def chat(

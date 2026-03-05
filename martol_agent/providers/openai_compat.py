@@ -18,16 +18,13 @@ log = logging.getLogger("martol-agent")
 class OpenAICompatProvider(LLMProvider):
     """OpenAI-compatible API provider."""
 
-    def __init__(
-        self,
-        api_key: str,
-        model: str | None = None,
-        base_url: str | None = None,
-    ):
-        kwargs: dict = {"api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
-        self.client = openai.AsyncOpenAI(**kwargs)
+    def __init__(self, api_key: str, model: str | None = None, base_url: str | None = None):
+        import httpx
+        self.client = openai.AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=httpx.Timeout(120.0, connect=10.0),
+        )
         self.model = model or "gpt-4o"
 
     async def chat(
