@@ -268,7 +268,9 @@ class ClaudeCodeWrapper(BaseWrapper):
         )
 
         # Submit via MCP for approval
-        # [C1] Include trigger_message_id — required by tool schema
+        # Use dbId if available (ME-12), fall back to serverSeqId
+        trigger_seq = str(self.last_known_id)
+        trigger_id = self._id_map.get(trigger_seq, trigger_seq)
         result = await self._mcp_call("action_submit", {
             "action_type": (
                 "code_write" if tool_name in ("Write", "Edit", "NotebookEdit") else
@@ -276,7 +278,7 @@ class ClaudeCodeWrapper(BaseWrapper):
                 "code_modify"
             ),
             "risk_level": risk,
-            "trigger_message_id": self.last_known_id,
+            "trigger_message_id": trigger_id,
             "description": description,
             "payload": {"tool": tool_name, "input": input_data},
         })

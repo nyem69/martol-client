@@ -265,6 +265,10 @@ class AgentWrapper(BaseWrapper):
         iteration = 0
 
         while iteration < MAX_TOOL_ITERATIONS:
+            if not self.ws or (hasattr(self.ws, 'closed') and self.ws.closed):
+                log.warning("WebSocket closed during tool loop, aborting")
+                break
+
             # Send any text content as a chat message
             if response.text and response.text.strip():
                 reply_to = trigger.get("serverSeqId") or trigger.get("id")
@@ -360,6 +364,10 @@ async def main() -> None:
         log.info("Loaded profile: %s (%s)", pre_args.profile, env_file)
     else:
         load_dotenv()
+
+    # Check .env file permissions (ME-20)
+    env_path = f".env.{pre_args.profile}" if pre_args.profile else ".env"
+    BaseWrapper.warn_env_permissions(env_path)
 
     parser = argparse.ArgumentParser(description="Martol Agent Wrapper")
     parser.add_argument(
