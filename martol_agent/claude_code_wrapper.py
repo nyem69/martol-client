@@ -72,6 +72,10 @@ class ClaudeCodeWrapper(BaseWrapper):
             log.info("No tool whitelist set — using safe defaults: %s", DEFAULT_SAFE_TOOLS)
             self.claude_allowed_tools = list(DEFAULT_SAFE_TOOLS)
 
+        # Deny-list for sensitive file paths
+        deny_patterns_str = os.environ.get("CLAUDE_CODE_DENY_PATHS", ".env*,*.key,*.pem,*.p12")
+        self.deny_path_patterns = [p.strip() for p in deny_patterns_str.split(",") if p.strip()]
+
         # Claude Code SDK client (persistent session)
         self.claude_client: ClaudeSDKClient | None = None
 
@@ -216,22 +220,35 @@ class ClaudeCodeWrapper(BaseWrapper):
         context: ToolPermissionContext,
     ) -> PermissionResultAllow | PermissionResultDeny:
         """Relay permission requests to the chat room via action_submit."""
+        import fnmatch
+
+        # Check deny-list paths
+        paths_to_check = []
+        if isinstance(input_data, dict):
+            for key in ("file_path", "path", "directory"):
+                if key in input_data:
+                    paths_to_check.append(str(input_data[key]))
+
+        for path in paths_to_check:
+            basename = os.path.basename(path)
+            for pattern in self.deny_path_patterns:
+                if fnmatch.fnmatch(basename, pattern) or fnmatch.fnmatch(path, pattern):
+                    log.warning("Path denied by CLAUDE_CODE_DENY_PATHS: %s", path)
+                    return PermissionResultDeny(message=f"Access to '{basename}' is restricted")
+
         # Hard-deny tools not in whitelist (if whitelist is configured)
         if self.claude_allowed_tools and not self._tool_allowed(tool_name):
             log.warning("Tool %s blocked by whitelist", tool_name)
             return PermissionResultDeny(message=f"Tool '{tool_name}' not in allowed list")
 
-        # Format the tool call for human review
-        if tool_name == "Bash":
-            description = f"Run command: `{input_data.get('command', '')}`"
-        elif tool_name == "Edit":
-            file_path = input_data.get("file_path", "unknown")
-            description = f"Edit file: `{file_path}`"
-        elif tool_name == "Write":
-            file_path = input_data.get("file_path", "unknown")
-            description = f"Write file: `{file_path}`"
+        # Format the tool call for human review (sanitized for chat broadcast)
+        if tool_name in ("Write", "Edit"):
+            description = f"Write/edit file: {input_data.get('file_path', 'unknown')}"
+        elif tool_name == "Bash":
+            cmd = str(input_data.get("command", ""))
+            description = f"Run command: `{cmd[:100]}`" + ("..." if len(cmd) > 100 else "")
         else:
-            description = f"Use tool: {tool_name}({json.dumps(input_data)[:200]})"
+            description = f"Use tool: {tool_name}"
 
         # Determine risk level
         if tool_name == "Bash":
