@@ -345,8 +345,12 @@ class ClaudeCodeWrapper(BaseWrapper):
                     reply_to = trigger.get("serverSeqId") or trigger.get("id")
                     for i in range(0, len(full_text), max_len):
                         chunk = full_text[i:i + max_len]
-                        await self.send_message(chunk, reply_to=reply_to)
-                        reply_to = None  # Only first chunk replies to trigger
+                        success = await self.send_message(chunk, reply_to=reply_to if i == 0 else None)
+                        if not success:
+                            log.warning("Failed to send chunk %d, aborting", i // max_len)
+                            break
+                        if i + max_len < len(full_text):
+                            await asyncio.sleep(0.15)
 
             except Exception as e:
                 log.error("Failed to process with Claude Code: %s", e)

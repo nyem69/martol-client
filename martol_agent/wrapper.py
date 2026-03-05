@@ -150,6 +150,9 @@ class AgentWrapper(BaseWrapper):
 
     async def _on_trigger(self, payload: dict):
         """Handle a message that should trigger an LLM response."""
+        if self._responding.locked():
+            log.info("Already generating response, skipping new trigger")
+            return
         asyncio.create_task(self._generate_response(payload))
 
     # ── Response Generation ──────────────────────────────────────────
@@ -458,6 +461,10 @@ async def main() -> None:
     if not api_key:
         parser.error("--api-key or --api-key-file or MARTOL_API_KEY required")
     args.api_key = api_key
+
+    if args.api_key and not args.api_key_file:
+        log.warning("API key passed via CLI argument — visible in process listing. "
+                    "Prefer --api-key-file or MARTOL_API_KEY env var.")
 
     # Derive MCP URL if not provided
     mcp_url = args.mcp_url or derive_mcp_url(args.url)
