@@ -76,6 +76,9 @@ class ClaudeCodeWrapper(BaseWrapper):
         deny_patterns_str = os.environ.get("CLAUDE_CODE_DENY_PATHS", ".env*,*.key,*.pem,*.p12")
         self.deny_path_patterns = [p.strip() for p in deny_patterns_str.split(",") if p.strip()]
 
+        # Approval polling timeout (seconds)
+        self.approval_timeout = int(os.environ.get("CLAUDE_CODE_APPROVAL_TIMEOUT", "60"))
+
         # Claude Code SDK client (persistent session)
         self.claude_client: ClaudeSDKClient | None = None
 
@@ -282,13 +285,16 @@ class ClaudeCodeWrapper(BaseWrapper):
             action_id = result.get("data", {}).get("action_id")
             if action_id:
                 # Poll for approval status
-                approved = await self._wait_for_approval(action_id)
-                if approved:
+                status = await self._wait_for_approval(action_id)
+                if status == "approved":
                     await self.send_message(f"Approved. Proceeding with: {description}")
                     return PermissionResultAllow(updated_input=input_data)
+                elif status is None:
+                    await self.send_message(f"Approval timed out. Skipping: {description}")
+                    return PermissionResultDeny(message="Approval timed out")
                 else:
                     await self.send_message(f"Denied. Skipping: {description}")
-                    return PermissionResultDeny(message="Action denied by room member")
+                    return PermissionResultDeny(message=f"Action {status} by room member")
 
         # If action_submit failed, deny by default
         log.warning("action_submit failed, denying tool %s", tool_name)
@@ -304,24 +310,29 @@ class ClaudeCodeWrapper(BaseWrapper):
                 return True
         return False
 
-    async def _wait_for_approval(self, action_id: int, timeout: float = 300) -> bool:
-        """Poll action_status until approved, denied, or timeout."""
-        start = time.monotonic()
-        poll_interval = 3  # seconds
+    async def _wait_for_approval(self, action_id: str) -> str | None:
+        """Poll for action approval with periodic feedback."""
+        timeout = self.approval_timeout
+        elapsed = 0
+        interval = 3
+        last_feedback = 0
 
-        while time.monotonic() - start < timeout:
+        while elapsed < timeout:
             result = await self._mcp_call("action_status", {"action_id": action_id})
             if result and result.get("ok"):
                 status = result.get("data", {}).get("status")
-                if status == "approved":
-                    return True
-                elif status in ("denied", "rejected", "expired"):
-                    return False
-                # else: still pending, keep polling
-            await asyncio.sleep(poll_interval)
+                if status in ("approved", "rejected", "expired"):
+                    return status
 
-        log.warning("Approval timeout for action %d", action_id)
-        return False
+            elapsed += interval
+            # Send periodic feedback every 15 seconds
+            if elapsed - last_feedback >= 15:
+                await self.send_typing(True)
+                last_feedback = elapsed
+
+            await asyncio.sleep(interval)
+
+        return None  # Timeout
 
     # ── Claude Code Prompt ───────────────────────────────────────────
 
