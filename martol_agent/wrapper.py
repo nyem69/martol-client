@@ -263,9 +263,10 @@ class AgentWrapper(BaseWrapper):
             tool_results: list[dict] = []
             for tc in response.tool_calls:
                 clean_args = _validate_tool_args(tc.name, tc.arguments)
-                log.info("Executing tool: %s(%s)", tc.name, json.dumps(clean_args)[:200])
+                log.debug("Tool args: %s", json.dumps(clean_args)[:200])
                 result = await self._mcp_call(tc.name, clean_args)
-                log.info("Tool result: %s", json.dumps(result)[:200])
+                log.info("Tool: %s → %d bytes", tc.name, len(json.dumps(result)) if result else 0)
+                log.debug("Tool result: %s", json.dumps(result)[:200])
                 tool_results.append({"tool_call": tc, "result": result})
 
             # Build follow-up messages with tool results

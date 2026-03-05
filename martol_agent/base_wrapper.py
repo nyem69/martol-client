@@ -191,7 +191,8 @@ class BaseWrapper:
             except json.JSONDecodeError:
                 log.warning("Invalid JSON from WebSocket")
             except Exception as e:
-                log.error("Error handling message: %s", e, exc_info=True)
+                log.error("Error handling message: %s", e)
+                log.debug("Full traceback:", exc_info=True)
 
     # --- HMAC Verification ---
 

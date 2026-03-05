@@ -322,7 +322,8 @@ class ClaudeCodeWrapper(BaseWrapper):
                 body = trigger.get("body", "")
                 prompt = f"[{sender}]: {body}"
 
-                log.info("Sending to Claude Code: %s", prompt[:120])
+                log.info("Sending to Claude Code (%d chars)", len(prompt))
+                log.debug("Claude Code prompt: %s", prompt[:200])
                 await self.claude_client.query(prompt)
 
                 # Collect response text
@@ -348,6 +349,7 @@ class ClaudeCodeWrapper(BaseWrapper):
                         reply_to = None  # Only first chunk replies to trigger
 
             except Exception as e:
-                log.error("Failed to process with Claude Code: %s", e, exc_info=True)
+                log.error("Failed to process with Claude Code: %s", e)
+                log.debug("Full traceback:", exc_info=True)
             finally:
                 await self.send_typing(False)
