@@ -140,7 +140,7 @@ class ClaudeCodeWrapper(BaseWrapper):
             self.claude_client = None
             try:
                 await client.disconnect()
-            except Exception:
+            except (asyncio.CancelledError, Exception):
                 pass
             log.info("Claude Code session stopped")
 

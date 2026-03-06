@@ -139,6 +139,8 @@ class BaseWrapper:
                 if not self._running:
                     break
                 log.warning("Connection closed: %s", e)
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                break
             except Exception as e:
                 if not self._running:
                     break
@@ -152,8 +154,14 @@ class BaseWrapper:
             log.info("Reconnecting in %ds (attempt %d/%d)...", delay, attempt, MAX_RECONNECT_ATTEMPTS)
             await asyncio.sleep(delay)
 
-        await self._on_disconnected()
-        await self._shutdown()
+        try:
+            await self._on_disconnected()
+        except (asyncio.CancelledError, Exception):
+            pass
+        try:
+            await self._shutdown()
+        except (asyncio.CancelledError, Exception):
+            pass
 
     async def _startup_sync(self):
         """Resolve identity and seed context from server."""
@@ -212,18 +220,21 @@ class BaseWrapper:
 
     async def _listen(self, ws):
         """Listen for WebSocket messages."""
-        async for raw in ws:
-            if not self._running:
-                break
-            try:
-                raw_str = raw if isinstance(raw, str) else raw.decode()
-                msg = json.loads(raw_str)
-                await self._handle_message(msg, raw_str)
-            except json.JSONDecodeError:
-                log.warning("Invalid JSON from WebSocket")
-            except Exception as e:
-                log.error("Error handling message: %s", e)
-                log.debug("Full traceback:", exc_info=True)
+        try:
+            async for raw in ws:
+                if not self._running:
+                    break
+                try:
+                    raw_str = raw if isinstance(raw, str) else raw.decode()
+                    msg = json.loads(raw_str)
+                    await self._handle_message(msg, raw_str)
+                except json.JSONDecodeError:
+                    log.warning("Invalid JSON from WebSocket")
+                except Exception as e:
+                    log.error("Error handling message: %s", e)
+                    log.debug("Full traceback:", exc_info=True)
+        except asyncio.CancelledError:
+            return
 
     # --- HMAC Verification ---
 
