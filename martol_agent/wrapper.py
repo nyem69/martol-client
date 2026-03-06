@@ -377,6 +377,10 @@ async def main() -> None:
 
     parser = argparse.ArgumentParser(description="Martol Agent Wrapper")
     parser.add_argument(
+        "--version", action="version",
+        version=f"martol-agent {__import__('martol_agent').__version__}",
+    )
+    parser.add_argument(
         "--profile", default=None, help="Named profile (loads .env.<profile>)"
     )
     parser.add_argument(
