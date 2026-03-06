@@ -141,6 +141,21 @@ class BaseWrapper:
                 log.warning("Connection closed: %s", e)
             except (asyncio.CancelledError, KeyboardInterrupt):
                 break
+            except websockets.exceptions.InvalidStatus as e:
+                if not self._running:
+                    break
+                code = e.response.status_code
+                hints = {
+                    401: "API key is invalid, expired, or revoked. Check MARTOL_API_KEY.",
+                    403: "Access denied — not a member of this room, or origin not allowed.",
+                    400: "Bad request — check the WebSocket URL format.",
+                    503: "Server unavailable — database or signing key may be down.",
+                }
+                hint = hints.get(code, "")
+                log.error("Connection rejected: HTTP %d. %s", code, hint)
+                if code == 401:
+                    log.error("Stopping — fix the API key and restart.")
+                    break
             except Exception as e:
                 if not self._running:
                     break
