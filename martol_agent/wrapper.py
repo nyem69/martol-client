@@ -371,6 +371,9 @@ async def main() -> None:
     else:
         load_dotenv()
 
+    from martol_agent import __version__
+    log.info("martol-agent %s", __version__)
+
     # Check .env file permissions (ME-20)
     env_path = f".env.{pre_args.profile}" if pre_args.profile else ".env"
     BaseWrapper.warn_env_permissions(env_path)
