@@ -1,7 +1,12 @@
 """Entry point for `python -m martol_agent`."""
 
 import asyncio
+import sys
 
 from martol_agent.wrapper import main
 
-asyncio.run(main())
+try:
+    asyncio.run(main())
+except KeyboardInterrupt:
+    pass  # Handled by signal handler in wrapper.main()
+sys.exit(0)

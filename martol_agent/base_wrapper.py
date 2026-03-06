@@ -128,12 +128,20 @@ class BaseWrapper:
                     await self._on_connected()
                     await self._listen(ws)
 
+            except websockets.ConnectionClosedOK:
+                if not self._running:
+                    break
+                log.info("Connection closed normally")
             except websockets.ConnectionClosedError as e:
                 if e.code == 4001:
                     log.error("API key revoked (4001). Stopping permanently.")
                     break
+                if not self._running:
+                    break
                 log.warning("Connection closed: %s", e)
             except Exception as e:
+                if not self._running:
+                    break
                 log.warning("Connection error: %s", e)
 
             if not self._running:
@@ -476,14 +484,17 @@ class BaseWrapper:
     # --- Lifecycle ---
 
     def stop(self):
-        """Signal the wrapper to stop."""
+        """Signal the wrapper to stop gracefully."""
+        if not self._running:
+            return
         self._running = False
+        log.info("Shutting down...")
+        # Cancel the listen loop; _on_disconnected + _shutdown run in connect()
         if self.ws:
             asyncio.ensure_future(self.ws.close())
 
     async def _shutdown(self):
         """Clean up resources."""
-        log.info("Shutting down...")
         if self._http_session:
             await self._http_session.close()
             self._http_session = None

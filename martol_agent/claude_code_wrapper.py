@@ -134,16 +134,23 @@ class ClaudeCodeWrapper(BaseWrapper):
         log.info("Claude Code session started")
 
     async def _stop_claude_session(self) -> None:
-        """Stop the Claude Code SDK session."""
+        """Stop the Claude Code SDK session gracefully."""
         if self.claude_client:
+            client = self.claude_client
+            self.claude_client = None
             try:
-                await self.claude_client.disconnect()
+                await client.disconnect()
             except Exception:
                 pass
-            self.claude_client = None
             log.info("Claude Code session stopped")
 
     # ── Lifecycle hooks ─────────────────────────────────────────────
+
+    def stop(self):
+        """Stop Claude Code session before closing WebSocket."""
+        if self.claude_client:
+            asyncio.ensure_future(self._stop_claude_session())
+        super().stop()
 
     async def _on_connected(self):
         await self._start_claude_session()
@@ -333,6 +340,8 @@ class ClaudeCodeWrapper(BaseWrapper):
                             await asyncio.sleep(0.15)
 
             except Exception as e:
+                if not self._running:
+                    return  # Expected during shutdown
                 log.error("Failed to process with Claude Code: %s", e)
                 log.debug("Full traceback:", exc_info=True)
             finally:
