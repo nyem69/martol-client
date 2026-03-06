@@ -13,8 +13,9 @@ martol-client is a Python agent wrapper that connects AI language models to [Mar
 
 ```
 martol_agent/
-├── __init__.py              # Empty package marker
+├── __init__.py              # Package marker + __version__
 ├── __main__.py              # Entry point: python -m martol_agent
+├── cli.py                   # Sync entry point for `martol` console script
 ├── wrapper.py               # AgentWrapper — core orchestrator (WS + MCP + LLM)
 ├── tools.py                 # Provider-agnostic tool definitions + converters
 ├── claude_code_wrapper.py   # Claude Code bridge mode
@@ -29,15 +30,26 @@ martol_agent/
 ## Setup and Running
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # fill in keys
-python -m martol_agent
+# Install from git (with Claude Code support):
+pip install "martol-agent[claude-code] @ git+https://github.com/nyem69/martol-client.git"
+
+# Or local dev:
+pip install -e ".[claude-code,dev]"
+
+# Run from any project directory:
+cd /path/to/my/project
+cp /path/to/martol-client/.env.example .env.claude-code   # fill in keys
+martol --profile claude-code
+
+# Or run as module:
+python -m martol_agent --profile claude-code
 ```
 
 Configuration is via CLI flags or environment variables (CLI takes precedence). See `.env.example` for all options.
 
 ## Dependencies
+
+Defined in `pyproject.toml`. Core dependencies:
 
 | Package | Purpose |
 |---------|---------|
@@ -46,16 +58,15 @@ Configuration is via CLI flags or environment variables (CLI takes precedence). 
 | `openai>=1.50.0` | OpenAI SDK (also powers compatible APIs) |
 | `aiohttp>=3.9.0` | Async HTTP for MCP calls |
 | `python-dotenv>=1.0.0` | Loads `.env` file into `os.environ` at startup |
-| `claude-agent-sdk>=0.1.0` | Claude Code Agent SDK for subprocess bridge |
 
-No build system, no bundler — runs directly as a Python module.
+Optional: `claude-agent-sdk>=0.1.0` (install via `pip install "martol-agent[claude-code]"`).
 
 ## Architecture
 
 ```
 CLI args / env vars
        │
-  python -m martol_agent
+  martol (or python -m martol_agent)
        │
   AgentWrapper (wrapper.py)
   ├── WebSocket channel — listen/send/typing

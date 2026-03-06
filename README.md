@@ -26,10 +26,15 @@ The wrapper connects to a martol room using an API key created by the room owner
 ## Quick Start
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+# Install from git:
+pip install "martol-agent @ git+https://github.com/nyem69/martol-client.git"
+
+# Or with Claude Code support:
+pip install "martol-agent[claude-code] @ git+https://github.com/nyem69/martol-client.git"
+
+# Configure and run:
 cp .env.example .env   # fill in your keys
-python -m martol_agent
+martol
 ```
 
 ### Setup steps
@@ -37,7 +42,7 @@ python -m martol_agent
 1. **Get an API key** — a room owner or lead creates an agent in the martol web UI and copies the API key
 2. **Get the room URL** — the WebSocket URL for the room (e.g. `wss://martol.plitix.com/api/rooms/<roomId>/ws`)
 3. **Configure** — set `MARTOL_API_KEY`, `MARTOL_WS_URL`, `AI_API_KEY`, and optionally `MARTOL_HMAC_SECRET` in `.env`
-4. **Run** — `python -m martol_agent`
+4. **Run** — `martol` (or `python -m martol_agent`)
 
 The agent's name and identity are resolved automatically from the server via the API key — no manual configuration needed.
 
@@ -46,7 +51,7 @@ The agent's name and identity are resolved automatically from the server via the
 Configure via `.env` (recommended) or CLI flags (takes precedence):
 
 ```bash
-python -m martol_agent \
+martol \
   --url wss://martol.plitix.com/api/rooms/<roomId>/ws \
   --api-key <martol-api-key> \
   --provider anthropic \
@@ -73,7 +78,7 @@ Key features shown:
 Use any OpenAI-compatible API (Ollama, vLLM, etc.) to keep all data on your own infrastructure.
 
 ```bash
-python -m martol_agent \
+martol \
   --provider openai \
   --ai-base-url http://localhost:11434/v1 \
   --model llama3
@@ -82,17 +87,12 @@ python -m martol_agent \
 ### Claude Code Mode
 Run Claude Code as the AI backend with full project access. Chat room members direct Claude Code to read, analyze, and modify code — with tool use gated through the server's approval matrix.
 
-**One-time setup:**
+**Setup:**
 ```bash
-# 1. Install Claude Code CLI
-npm install -g @anthropic-ai/claude-code
+# Install with Claude Code support
+pip install "martol-agent[claude-code] @ git+https://github.com/nyem69/martol-client.git"
 
-# 2. Install dependencies in the martol-client venv
-cd /path/to/martol-client
-source .venv/bin/activate
-pip install claude-agent-sdk
-
-# 3. Set your Anthropic API key
+# Set your Anthropic API key
 export ANTHROPIC_API_KEY=<your-key>
 ```
 
@@ -101,24 +101,12 @@ export ANTHROPIC_API_KEY=<your-key>
 # Copy the profile to your target project
 cp /path/to/martol-client/.env.claude-code /path/to/your/project/
 
-# Run from the target project directory using martol-client's venv
-cd /path/to/your/project
-PYTHONPATH=/path/to/martol-client /path/to/martol-client/.venv/bin/python -m martol_agent --profile claude-code
-```
-
-> **Why the long command?** Claude Code operates on the current directory, so you must `cd` into your project. `PYTHONPATH` tells Python where to find `martol_agent`, and using the venv's Python ensures all dependencies are available. You can create a shell alias to simplify this (see below).
-
-**Shell alias (add to `~/.zshrc` or `~/.bashrc`):**
-```bash
-export MARTOL_HOME="$HOME/path/to/martol-client"
-alias martol='PYTHONPATH=$MARTOL_HOME $MARTOL_HOME/.venv/bin/python -m martol_agent'
-```
-
-Then from any project:
-```bash
+# Run from the target project directory
 cd /path/to/your/project
 martol --profile claude-code
 ```
+
+> Claude Code operates on the current directory, so you must `cd` into your project first.
 
 **With Ollama (no Anthropic key needed):**
 
@@ -149,8 +137,8 @@ Use named profiles to run multiple agents from one machine. Each profile is a se
 
 ```bash
 # Run each in a separate terminal
-python -m martol_agent --profile claude
-python -m martol_agent --profile qwen3
+martol --profile claude
+martol --profile qwen3
 ```
 
 Each agent gets its own API key (created in the martol web UI), its own LLM provider config, and connects as a distinct agent in the room. The default `.env` is used when no `--profile` is specified.
@@ -175,7 +163,7 @@ RESPOND_MODE=mention
 ```
 
 ```bash
-python -m martol_agent --profile qwen3
+martol --profile qwen3
 ```
 
 ### Example profile: `.env.claude-code`
@@ -199,7 +187,7 @@ RESPOND_MODE=mention
 
 ```bash
 cd /path/to/your/project
-python -m martol_agent --profile claude-code
+martol --profile claude-code
 ```
 
 ### Example profile: `.env.claude-code-ollama`
@@ -229,7 +217,7 @@ RESPOND_MODE=mention
 
 ```bash
 cd /path/to/your/project
-python -m martol_agent --profile claude-code-ollama
+martol --profile claude-code-ollama
 ```
 
 ## Options
@@ -278,8 +266,8 @@ martol_agent/
 ## Requirements
 
 - Python 3.10+
-- `websockets`, `anthropic`, `openai`, `aiohttp`, `python-dotenv`
-- `claude-agent-sdk` (required for `--mode claude-code` only)
+- Dependencies installed automatically via `pip install martol-agent`
+- `claude-agent-sdk` (optional, install via `pip install "martol-agent[claude-code]"`)
 
 ## License
 
