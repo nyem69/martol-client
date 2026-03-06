@@ -193,7 +193,8 @@ class BaseWrapper:
                 if m.get("user_id") == self.agent_user_id:
                     self.agent_name = m.get("name", "agent")
                     break
-            member_count = len(members)
+            humans = [m for m in members if not m.get("is_agent")]
+            agents = [m for m in members if m.get("is_agent")]
 
             # Parse AI opt-out preferences (HI-04)
             self._ai_opt_out_users = {
@@ -203,8 +204,9 @@ class BaseWrapper:
             if self._ai_opt_out_users:
                 log.info("AI opt-out: %d user(s) excluded from context", len(self._ai_opt_out_users))
 
-            log.info("Identity: %s (id=%s) in room '%s' (%d members)",
-                     self.agent_name, self.agent_user_id, self.room_name, member_count)
+            log.info("Identity: %s (id=%s) in room '%s' (%d humans, %d agents)",
+                     self.agent_name, self.agent_user_id, self.room_name,
+                     len(humans), len(agents))
         else:
             log.error("Failed to resolve identity via chat_who")
 
