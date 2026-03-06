@@ -616,19 +616,24 @@ hr {
     Supports Anthropic Claude, OpenAI, any OpenAI-compatible API (Ollama, Groq, vLLM),
     and Claude Code as a subprocess.
   </p>
-  <div class="arch-diagram"><span class="d">                  CLI / .env</span>
-<span class="d">                     |</span>
-<span class="d">            python -m martol_agent</span>
-<span class="d">                     |</span>
-<span class="h">            +----- Wrapper -----+</span>
-<span class="d">            |                   |</span>
-<span class="b">      WebSocket             MCP HTTP</span>
-<span class="b">   (real-time I/O)       (/mcp/v1 tools)</span>
-<span class="d">            |                   |</span>
-<span class="d">      listen / send      action_submit</span>
-<span class="d">      typing indicators  action_status</span>
-<span class="d">            |                   |</span>
-<span class="g">            +-- Martol Server --+</span></div>
+  <div class="arch-diagram"><span class="d">                      CLI / .env</span>
+<span class="d">                          |</span>
+<span class="d">                          |</span>
+<span class="d">               python -m martol_agent</span>
+<span class="d">                          |</span>
+<span class="d">                          |</span>
+<span class="h">            +--------- Wrapper ---------+</span>
+<span class="d">            |                           |</span>
+<span class="d">            |                           |</span>
+<span class="b">      WebSocket                     MCP HTTP</span>
+<span class="b">   (real-time I/O)               (/mcp/v1 tools)</span>
+<span class="d">            |                           |</span>
+<span class="d">            |                           |</span>
+<span class="d">      listen / send               action_submit</span>
+<span class="d">      typing indicators           action_status</span>
+<span class="d">            |                           |</span>
+<span class="d">            |                           |</span>
+<span class="g">            +------- Martol Server -----+</span></div>
 </section>
 
 <!-- ─── OVERVIEW ────────────────────────────────────── -->
