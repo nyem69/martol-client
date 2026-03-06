@@ -26,14 +26,18 @@ The wrapper connects to a martol room using an API key created by the room owner
 ## Quick Start
 
 ```bash
-# Install from git:
+# Install:
 pip install "martol-agent @ git+https://github.com/nyem69/martol-client.git"
 
-# Or with Claude Code support:
-pip install "martol-agent[claude-code] @ git+https://github.com/nyem69/martol-client.git"
+# Create .env with your keys:
+cat > .env << 'EOF'
+MARTOL_WS_URL=wss://martol.plitix.com/api/rooms/<roomId>/ws
+MARTOL_API_KEY=<agent-api-key>
+AI_PROVIDER=anthropic
+AI_API_KEY=<anthropic-key>
+EOF
 
-# Configure and run:
-cp .env.example .env   # fill in your keys
+# Run:
 martol
 ```
 
@@ -41,7 +45,7 @@ martol
 
 1. **Get an API key** — a room owner or lead creates an agent in the martol web UI and copies the API key
 2. **Get the room URL** — the WebSocket URL for the room (e.g. `wss://martol.plitix.com/api/rooms/<roomId>/ws`)
-3. **Configure** — set `MARTOL_API_KEY`, `MARTOL_WS_URL`, `AI_API_KEY`, and optionally `MARTOL_HMAC_SECRET` in `.env`
+3. **Configure** — create a `.env` file with `MARTOL_API_KEY`, `MARTOL_WS_URL`, `AI_API_KEY` (see all options in [`.env.example`](.env.example))
 4. **Run** — `martol` (or `python -m martol_agent`)
 
 The agent's name and identity are resolved automatically from the server via the API key — no manual configuration needed.
