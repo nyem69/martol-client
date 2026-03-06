@@ -317,7 +317,28 @@ class BaseWrapper:
                         del self._id_map[k]
 
         elif msg_type == "error":
-            log.warning("Server error: %s — %s", msg.get("code", ""), msg.get("message", ""))
+            code = msg.get("code", "")
+            log.warning("Server error: %s — %s", code, msg.get("message", ""))
+            if code == "resync_required":
+                await self._do_resync()
+
+    async def _do_resync(self):
+        """Re-seed conversation context from server (called on resync_required)."""
+        log.info("Resyncing conversation context...")
+        self.conversation.clear()
+        self._seen_seq_ids.clear()
+        self._message_index.clear()
+        self._message_index_order.clear()
+        self.last_known_id = 0
+
+        resync = await self._mcp_call("chat_resync", {"limit": self.context_size})
+        if resync and resync.get("ok"):
+            messages = resync.get("data", {}).get("messages", [])
+            for msg in messages:
+                self._append_context(msg)
+            log.info("Resync complete: %d messages loaded", len(messages))
+        else:
+            log.error("Resync failed: %s", resync)
 
     async def _on_trigger(self, payload: dict):
         """Called when a message should trigger a response. Override in subclasses."""
