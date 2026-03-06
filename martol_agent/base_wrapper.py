@@ -110,7 +110,7 @@ class BaseWrapper:
 
                 async with websockets.connect(
                     url,
-                    additional_headers={"x-api-key": self.api_key},
+                    extra_headers={"x-api-key": self.api_key},
                     ssl=ssl_context,
                     open_timeout=10,
                     close_timeout=5,
@@ -208,8 +208,9 @@ class BaseWrapper:
             if not self._running:
                 break
             try:
-                msg = json.loads(raw)
-                await self._handle_message(msg)
+                raw_str = raw if isinstance(raw, str) else raw.decode()
+                msg = json.loads(raw_str)
+                await self._handle_message(msg, raw_str)
             except json.JSONDecodeError:
                 log.warning("Invalid JSON from WebSocket")
             except Exception as e:
@@ -254,12 +255,11 @@ class BaseWrapper:
 
     # --- Message Handling ---
 
-    async def _handle_message(self, msg: dict):
+    async def _handle_message(self, msg: dict, raw_json: str = ""):
         """Route incoming WebSocket messages."""
         msg_type = msg.get("type")
 
         if msg_type == "message":
-            raw_json = json.dumps(msg)
             if not self._verify_hmac(raw_json, msg):
                 return
 
