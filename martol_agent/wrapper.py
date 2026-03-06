@@ -182,7 +182,13 @@ class AgentWrapper(BaseWrapper):
                     "[AI Agent] Unable to respond — the request timed out. Please try again."
                 )
             except Exception as e:
-                log.error("LLM call failed: %s", e)
+                err_str = str(e)
+                # Truncate HTML error pages (e.g. Cloudflare 502) to first line
+                if '<' in err_str and len(err_str) > 200:
+                    first_line = err_str.split('\n', 1)[0][:200]
+                    log.error("LLM call failed: %s...", first_line)
+                else:
+                    log.error("LLM call failed: %s", e)
                 await self.send_message(
                     "[AI Agent] Unable to respond — the AI service may be experiencing issues."
                 )
