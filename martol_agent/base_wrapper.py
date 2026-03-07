@@ -463,6 +463,8 @@ class BaseWrapper:
 
     def _is_mentioned(self, body: str) -> bool:
         """Check if the agent is mentioned in the message body."""
+        if re.search(r'\b@all\b', body, re.IGNORECASE):
+            return True
         if not self.agent_name:
             return False
         name = self.agent_name
