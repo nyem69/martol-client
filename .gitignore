@@ -11,3 +11,6 @@ venv/
 .env.*
 !.env.*.EXAMPLE
 .obsidian
+
+.coverage
+.playwright-mcp
