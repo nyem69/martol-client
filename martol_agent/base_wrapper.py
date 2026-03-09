@@ -58,6 +58,8 @@ class BaseWrapper:
         self.agent_user_id: str | None = None
         self.agent_name: str | None = None
         self.room_name: str = "unknown"
+        self.room_brief: str | None = None
+        self.room_brief_version: int = 0
         self.last_known_id: int = 0
         self._responding = asyncio.Lock()
         self._running = True
@@ -187,6 +189,8 @@ class BaseWrapper:
         if who and who.get("ok"):
             data = who.get("data", {})
             self.room_name = data.get("room_name", "unknown")
+            self.room_brief = data.get("brief")
+            self.room_brief_version = data.get("brief_version", 0)
             self.agent_user_id = data.get("self_user_id")
             members = data.get("members", [])
             for m in members:
@@ -343,7 +347,7 @@ class BaseWrapper:
                 await self._do_resync()
 
     async def _do_resync(self):
-        """Re-seed conversation context from server (called on resync_required)."""
+        """Re-seed conversation context and refresh brief from server."""
         log.info("Resyncing conversation context...")
         self.conversation.clear()
         self._seen_seq_ids.clear()
@@ -359,6 +363,16 @@ class BaseWrapper:
             log.info("Resync complete: %d messages loaded", len(messages))
         else:
             log.error("Resync failed: %s", resync)
+
+        # Re-fetch brief to detect updates since last sync
+        brief = await self._mcp_call("brief_get_active", {})
+        if brief and brief.get("ok"):
+            data = brief.get("data", {})
+            new_version = data.get("version", 0)
+            if new_version != self.room_brief_version:
+                log.info("Brief updated: v%d → v%d", self.room_brief_version, new_version)
+                self.room_brief = data.get("brief")
+                self.room_brief_version = new_version
 
     async def _on_trigger(self, payload: dict):
         """Called when a message should trigger a response. Override in subclasses."""
