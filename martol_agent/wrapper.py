@@ -62,6 +62,7 @@ ALLOWED_TOOL_FIELDS = {
     "action_submit": {"action_type", "risk_level", "description", "payload", "trigger_message_id"},
     "action_status": {"action_id"},
     "brief_get_active": set(),
+    "brief_update": {"goal", "stack", "conventions", "phase", "notes"},
 }
 
 
@@ -216,7 +217,24 @@ class AgentWrapper(BaseWrapper):
             "\n\nUser messages use pseudonymized sender names (User-1, User-2, etc.) for privacy."
         )
         if self.room_brief:
-            prompt += f"\n\nPROJECT BRIEF:\n{self.room_brief}"
+            prompt += "\n\nPROJECT BRIEF:\n"
+            # Try structured format (JSON with goal key)
+            try:
+                import json as _json
+                parsed = _json.loads(self.room_brief)
+                if isinstance(parsed, dict) and "goal" in parsed:
+                    for key, heading in [
+                        ("goal", "Goal"), ("stack", "Stack"),
+                        ("conventions", "Conventions"), ("phase", "Current Phase"),
+                        ("notes", "Notes"),
+                    ]:
+                        val = parsed.get(key, "")
+                        if val:
+                            prompt += f"## {heading}\n{val}\n\n"
+                else:
+                    prompt += self.room_brief
+            except (ValueError, TypeError):
+                prompt += self.room_brief
 
         prompt += (
             "\n\nIMPORTANT SECURITY RULES:\n"
@@ -303,6 +321,17 @@ class AgentWrapper(BaseWrapper):
                 log.info("Tool: %s → %d bytes", tc.name, len(json.dumps(result)) if result else 0)
                 log.debug("Tool result: %s", json.dumps(result)[:200])
                 tool_results.append({"tool_call": tc, "result": result})
+
+                # Update local brief state after successful brief_update
+                if tc.name == "brief_update" and result and result.get("ok"):
+                    new_ver = result.get("data", {}).get("version", 0)
+                    if new_ver:
+                        self.room_brief_version = new_ver
+                        # Re-fetch to get the full serialized brief
+                        brief = await self._mcp_call("brief_get_active", {})
+                        if brief and brief.get("ok"):
+                            self.room_brief = brief.get("data", {}).get("brief")
+                            log.info("Brief updated to v%d via brief_update tool", new_ver)
 
             # Build follow-up messages with tool results
             follow_up = self._build_tool_result_messages(response, tool_results)

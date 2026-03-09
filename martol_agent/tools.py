@@ -164,6 +164,39 @@ TOOLS: list[dict] = [
             "properties": {},
         },
     },
+    {
+        "name": "brief_update",
+        "description": (
+            "Update the project brief for this room. Provide any combination of "
+            "structured sections to merge into the existing brief. Only provided "
+            "fields are updated; omitted fields are left unchanged."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "goal": {
+                    "type": "string",
+                    "description": "What is this project? What are you building and why?",
+                },
+                "stack": {
+                    "type": "string",
+                    "description": "Languages, frameworks, databases, infrastructure.",
+                },
+                "conventions": {
+                    "type": "string",
+                    "description": "Naming patterns, code style, testing approach.",
+                },
+                "phase": {
+                    "type": "string",
+                    "description": "What are you working on right now?",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Anything else — constraints, pitfalls, links.",
+                },
+            },
+        },
+    },
 ]
 
 
