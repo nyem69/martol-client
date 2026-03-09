@@ -151,6 +151,19 @@ TOOLS: list[dict] = [
             "required": ["action_id"],
         },
     },
+    {
+        "name": "brief_get_active",
+        "description": (
+            "Fetch the current project brief for this room. The brief contains "
+            "project goals, tech stack, conventions, and constraints set by the "
+            "room owner or lead. Use this to refresh your understanding of the "
+            "project context."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+    },
 ]
 
 
