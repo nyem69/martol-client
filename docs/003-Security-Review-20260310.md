@@ -170,17 +170,16 @@ Permission requests use global `self.last_known_id` as `trigger_message_id` inst
 ## Test & Coverage Notes
 
 **Post-fix:**
-- `pytest -q`: **145 passed**
-- `pytest --cov=martol_agent --cov-report=term-missing -q`: overall coverage **44%**
-- `martol_agent/codex_wrapper.py` coverage: **0%** (high residual risk for runtime behavior)
+- `pytest -q`: **177 passed**
+- `martol_agent/codex_wrapper.py` coverage: 32 dedicated tests added (`73c7823`)
 
 ---
 
 ## Recommended Next Actions
 
-1. ~~Patch SR-01 and SR-02 first (security boundary issues).~~ Done.
-2. ~~Fix SR-03 and SR-05 next (operational correctness + audit integrity).~~ Done.
-3. ~~Fix SR-04 and SR-06 and add targeted tests.~~ Done.
-4. Add dedicated tests for `codex_wrapper.py` before expanding codex-mode usage.
+1. ~~Patch SR-01 and SR-02 first (security boundary issues).~~ Done (`7366a22`).
+2. ~~Fix SR-03 and SR-05 next (operational correctness + audit integrity).~~ Done (`7366a22`).
+3. ~~Fix SR-04 and SR-06 and add targeted tests.~~ Done (`7366a22`).
+4. ~~Add dedicated tests for `codex_wrapper.py` before expanding codex-mode usage.~~ Done (`73c7823`) — 32 tests covering constructor, RPC, tool calls, lifecycle, response chunking.
 5. Add regression tests for `simulation` field survival through validation.
 6. Consider DNS rebinding mitigation (re-resolve before request execution).
