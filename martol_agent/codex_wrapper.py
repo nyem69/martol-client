@@ -149,6 +149,30 @@ class CodexWrapper(BaseWrapper):
 
     # ── JSON-RPC Communication ────────────────────────────────────────
 
+    async def _read_stdout_line(self, timeout: float) -> bytes | None:
+        """Read a newline-delimited line from Codex stdout without size limit.
+
+        The default asyncio StreamReader.readline() has a 64KB buffer limit
+        which causes 'Separator is not found, and chunk exceed the limit'
+        errors on large JSON-RPC responses. This reads in chunks instead.
+        """
+        stdout = self._codex_proc.stdout
+        chunks: list[bytes] = []
+        while True:
+            chunk = await asyncio.wait_for(stdout.read(65536), timeout=timeout)
+            if not chunk:
+                return b"".join(chunks) if chunks else None
+            chunks.append(chunk)
+            if b"\n" in chunk:
+                break
+        data = b"".join(chunks)
+        # If there's data after the newline, push it back into the buffer
+        idx = data.index(b"\n")
+        remainder = data[idx + 1:]
+        if remainder:
+            stdout._buffer = remainder + bytes(stdout._buffer)  # type: ignore[attr-defined]
+        return data[:idx + 1]
+
     async def _rpc_call(self, method: str, params: dict, timeout: float = 120) -> dict | None:
         """Send a JSON-RPC request and wait for response."""
         if not self._codex_proc or not self._codex_proc.stdin:
@@ -175,10 +199,7 @@ class CodexWrapper(BaseWrapper):
 
             # Read responses until we get ours
             while not future.done():
-                line = await asyncio.wait_for(
-                    self._codex_proc.stdout.readline(),
-                    timeout=timeout,
-                )
+                line = await self._read_stdout_line(timeout)
                 if not line:
                     future.set_exception(ConnectionError("Codex process closed stdout"))
                     break
