@@ -496,8 +496,8 @@ async def main() -> None:
     parser.add_argument(
         "--mode",
         default=os.environ.get("AGENT_MODE", "provider"),
-        choices=["provider", "claude-code"],
-        help="Agent mode: provider (LLM API) or claude-code (Claude Code subprocess)",
+        choices=["provider", "claude-code", "codex"],
+        help="Agent mode: provider (LLM API), claude-code (Claude Code subprocess), or codex (OpenAI Codex)",
     )
     parser.add_argument(
         "--claude-model",
@@ -517,6 +517,24 @@ async def main() -> None:
     parser.add_argument("--bypass-permissions-confirm", action="store_true",
                         default=False,
                         help="Required when using bypassPermissions mode. Confirms you understand the risks.")
+    # Codex mode args
+    parser.add_argument(
+        "--codex-model",
+        default=os.environ.get("CODEX_MODEL"),
+        help="Model override for Codex mode (e.g. o3, o4-mini, gpt-5.2-codex)",
+    )
+    parser.add_argument(
+        "--codex-sandbox",
+        default=os.environ.get("CODEX_SANDBOX", "read-only"),
+        choices=["read-only", "workspace-write", "danger-full-access"],
+        help="Codex sandbox mode (default: read-only)",
+    )
+    parser.add_argument(
+        "--codex-approval-policy",
+        default=os.environ.get("CODEX_APPROVAL_POLICY", "on-failure"),
+        choices=["untrusted", "on-failure", "on-request", "never"],
+        help="Codex approval policy for shell commands (default: on-failure)",
+    )
     args = parser.parse_args()
 
     # Validate required args (common to both modes)
@@ -571,6 +589,30 @@ async def main() -> None:
         log.info(
             "Starting Claude Code agent (mode=%s, context=%d, mcp=%s)",
             args.respond,
+            args.context,
+            mcp_url,
+        )
+    elif args.mode == "codex":
+        from martol_agent.codex_wrapper import CodexWrapper
+
+        wrapper = CodexWrapper(
+            ws_url=args.url,
+            api_key=args.api_key,
+            mcp_url=mcp_url,
+            context_size=args.context,
+            respond_mode=args.respond,
+            codex_model=args.codex_model,
+            codex_sandbox=args.codex_sandbox,
+            codex_approval_policy=args.codex_approval_policy,
+            hmac_secret=args.hmac_secret,
+            allow_unsigned=args.allow_unsigned,
+        )
+
+        log.info(
+            "Starting Codex agent (mode=%s, model=%s, sandbox=%s, context=%d, mcp=%s)",
+            args.respond,
+            args.codex_model or "default",
+            args.codex_sandbox,
             args.context,
             mcp_url,
         )
