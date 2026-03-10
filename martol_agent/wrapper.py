@@ -59,7 +59,7 @@ ALLOWED_TOOL_FIELDS = {
     "chat_resync": set(),
     "chat_join": set(),
     "chat_who": set(),
-    "action_submit": {"action_type", "risk_level", "description", "payload", "trigger_message_id"},
+    "action_submit": {"action_type", "risk_level", "description", "payload", "trigger_message_id", "simulation"},
     "action_status": {"action_id"},
     "brief_get_active": set(),
     "brief_update": {"goal", "stack", "conventions", "phase", "notes"},
@@ -593,6 +593,24 @@ async def main() -> None:
             mcp_url,
         )
     elif args.mode == "codex":
+        codex_dangerous = (
+            args.codex_sandbox == "danger-full-access"
+            or args.codex_approval_policy == "never"
+        )
+        if codex_dangerous and not args.bypass_permissions_confirm:
+            print("CRITICAL: Codex is configured with dangerous settings:")
+            if args.codex_sandbox == "danger-full-access":
+                print(f"  --codex-sandbox={args.codex_sandbox} grants unrestricted filesystem/shell access")
+            if args.codex_approval_policy == "never":
+                print(f"  --codex-approval-policy={args.codex_approval_policy} auto-approves all commands")
+            print("Add --bypass-permissions-confirm to acknowledge this risk.")
+            sys.exit(1)
+        if codex_dangerous:
+            log.critical(
+                "Codex running with dangerous settings: sandbox=%s, approval-policy=%s",
+                args.codex_sandbox, args.codex_approval_policy,
+            )
+
         from martol_agent.codex_wrapper import CodexWrapper
 
         wrapper = CodexWrapper(

@@ -30,7 +30,9 @@ def derive_mcp_url(ws_url: str) -> str:
         raise ValueError(f"Cannot derive MCP URL: no hostname in {ws_url}")
     scheme = "https" if parsed.scheme == "wss" else "http"
     port = f":{parsed.port}" if parsed.port else ""
-    return f"{scheme}://{parsed.hostname}{port}"
+    # Bracket IPv6 addresses for valid URI form (e.g. http://[::1]:3000)
+    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    return f"{scheme}://{host}{port}"
 
 
 class BaseWrapper:

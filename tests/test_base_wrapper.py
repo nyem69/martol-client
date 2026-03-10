@@ -35,7 +35,7 @@ class TestDeriveMcpUrl:
 
     def test_ipv6(self):
         result = derive_mcp_url("ws://[::1]:3000/path")
-        assert result == "http://::1:3000"
+        assert result == "http://[::1]:3000"
 
     def test_plain_localhost(self):
         assert derive_mcp_url("ws://localhost/path") == "http://localhost"

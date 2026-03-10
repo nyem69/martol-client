@@ -6,8 +6,10 @@ from martol_agent.tools import TOOLS, to_anthropic_tools, to_openai_tools
 class TestToolsSchema:
     """Validate the canonical tool definitions."""
 
-    def test_tools_count(self):
-        assert len(TOOLS) == 2
+    def test_tools_have_required_names(self):
+        tool_names = {t["name"] for t in TOOLS}
+        assert "action_submit" in tool_names
+        assert "action_status" in tool_names
 
     def test_tools_have_required_fields(self):
         for tool in TOOLS:

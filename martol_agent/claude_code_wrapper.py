@@ -66,6 +66,7 @@ class ClaudeCodeWrapper(BaseWrapper):
         self.claude_permission_mode = claude_permission_mode
         self.claude_allowed_tools = claude_allowed_tools or []
         self.member_count: int = 0
+        self._current_trigger_seq: int | None = None  # SR-05: track trigger message for approval linkage
 
         # Apply safe defaults if no whitelist specified
         if not self.claude_allowed_tools:
@@ -219,14 +220,31 @@ class ClaudeCodeWrapper(BaseWrapper):
         if tool_name == "WebFetch":
             from urllib.parse import urlparse
             import ipaddress
+            import socket
             url = input_data.get("url", "")
             hostname = urlparse(url).hostname or ""
+
+            def _is_private_ip(addr_str: str) -> bool:
+                try:
+                    ip = ipaddress.ip_address(addr_str)
+                    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved
+                except ValueError:
+                    return False
+
+            # Check literal IP first, then resolve domain names
+            if _is_private_ip(hostname):
+                return PermissionResultDeny(message=f"WebFetch blocked: {hostname} is a private/internal IP")
             try:
-                ip = ipaddress.ip_address(hostname)
-                if ip.is_private or ip.is_loopback or ip.is_link_local:
-                    return PermissionResultDeny(message=f"WebFetch blocked: {hostname} is a private/internal IP")
-            except ValueError:
-                pass  # hostname is a domain name, not an IP — allow
+                resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+                for family, _, _, _, sockaddr in resolved:
+                    addr = sockaddr[0]
+                    if _is_private_ip(addr):
+                        log.warning("WebFetch SSRF blocked: %s resolves to private IP %s", hostname, addr)
+                        return PermissionResultDeny(
+                            message=f"WebFetch blocked: {hostname} resolves to private IP {addr}"
+                        )
+            except socket.gaierror:
+                pass  # DNS resolution failed — let the actual request handle it
 
         # Hard-deny tools not in whitelist (if whitelist is configured)
         if self.claude_allowed_tools and not self._tool_allowed(tool_name):
@@ -257,8 +275,8 @@ class ClaudeCodeWrapper(BaseWrapper):
         )
 
         # Submit via MCP for approval
-        # Use dbId if available (ME-12), fall back to serverSeqId
-        trigger_seq = str(self.last_known_id)
+        # Use the actual trigger message, not last_known_id (SR-05)
+        trigger_seq = str(self._current_trigger_seq or self.last_known_id)
         trigger_id = self._id_map.get(trigger_seq, trigger_seq)
         result = await self._mcp_call("action_submit", {
             "action_type": (
@@ -380,6 +398,9 @@ class ClaudeCodeWrapper(BaseWrapper):
 
             try:
                 await self.send_typing(True)
+
+                # SR-05: track trigger message for accurate approval linkage
+                self._current_trigger_seq = trigger.get("serverSeqId") or trigger.get("id") or 0
 
                 sender = trigger.get("senderName") or trigger.get("sender_name") or "unknown"
                 body = trigger.get("body", "")
