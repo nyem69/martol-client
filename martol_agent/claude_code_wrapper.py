@@ -117,6 +117,38 @@ class ClaudeCodeWrapper(BaseWrapper):
             f"use markdown formatting.\n"
         )
 
+        # Inject project brief
+        if self.room_brief:
+            system_append += "\nPROJECT BRIEF:\n"
+            try:
+                parsed = json.loads(self.room_brief)
+                if isinstance(parsed, dict) and "goal" in parsed:
+                    for key, heading in [
+                        ("goal", "Goal"), ("stack", "Stack"),
+                        ("conventions", "Conventions"), ("phase", "Current Phase"),
+                        ("notes", "Notes"),
+                    ]:
+                        val = parsed.get(key, "")
+                        if val:
+                            system_append += f"## {heading}\n{val}\n\n"
+                else:
+                    system_append += self.room_brief
+            except (ValueError, TypeError):
+                system_append += self.room_brief
+
+        # Instruct how to update the brief
+        system_append += (
+            "\nBRIEF UPDATE CAPABILITY:\n"
+            "When asked to fill or update the project brief, analyze the codebase "
+            "and output a fenced JSON block tagged `brief_update` with the sections "
+            "you want to set. The wrapper will call the server API automatically.\n"
+            "Format:\n"
+            "```brief_update\n"
+            '{"goal": "...", "stack": "...", "conventions": "...", "phase": "...", "notes": "..."}\n'
+            "```\n"
+            "Only include sections you want to update. Omitted sections stay unchanged.\n"
+        )
+
         options = ClaudeAgentOptions(
             system_prompt={"type": "preset", "preset": "claude_code", "append": system_append},
             permission_mode=self.claude_permission_mode,
@@ -293,6 +325,50 @@ class ClaudeCodeWrapper(BaseWrapper):
 
         return None  # Timeout
 
+    # ── Brief Update Interception ────────────────────────────────────
+
+    async def _handle_brief_update_blocks(self, text: str) -> str:
+        """Scan response for ```brief_update blocks, call MCP, replace with status."""
+        import re
+        pattern = re.compile(r"```brief_update\s*\n(.*?)\n```", re.DOTALL)
+
+        matches = list(pattern.finditer(text))
+        if not matches:
+            return text
+
+        for match in reversed(matches):  # reverse to preserve offsets
+            try:
+                params = json.loads(match.group(1))
+                if not isinstance(params, dict):
+                    continue
+
+                # Filter to valid keys only
+                valid_keys = {"goal", "stack", "conventions", "phase", "notes"}
+                filtered = {k: v for k, v in params.items() if k in valid_keys and isinstance(v, str)}
+                if not filtered:
+                    continue
+
+                result = await self._mcp_call("brief_update", filtered)
+                if result and result.get("ok"):
+                    new_ver = result.get("data", {}).get("version", "?")
+                    replacement = f"**Brief updated** (v{new_ver})"
+                    # Update local state
+                    self.room_brief_version = int(new_ver) if isinstance(new_ver, int) else 0
+                    brief = await self._mcp_call("brief_get_active", {})
+                    if brief and brief.get("ok"):
+                        self.room_brief = brief.get("data", {}).get("brief")
+                    log.info("Brief updated to v%s via Claude Code", new_ver)
+                else:
+                    err = result.get("error", "unknown error") if result else "MCP call failed"
+                    replacement = f"**Brief update failed:** {err}"
+                    log.warning("brief_update failed: %s", err)
+
+                text = text[:match.start()] + replacement + text[match.end():]
+            except (json.JSONDecodeError, Exception) as e:
+                log.warning("Failed to parse brief_update block: %s", e)
+
+        return text
+
     # ── Claude Code Prompt ───────────────────────────────────────────
 
     async def _send_to_claude(self, trigger: dict) -> None:
@@ -327,6 +403,10 @@ class ClaudeCodeWrapper(BaseWrapper):
                 # Send collected text to chat room
                 if text_parts:
                     full_text = "\n".join(text_parts)
+
+                    # Intercept brief_update blocks and call MCP
+                    full_text = await self._handle_brief_update_blocks(full_text)
+
                     # Chunk long responses (martol may have message size limits)
                     max_len = 4000
                     reply_to = trigger.get("serverSeqId") or trigger.get("id")
