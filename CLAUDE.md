@@ -80,6 +80,8 @@ CLI args / env vars
 
 When `--mode claude-code` is used, the wrapper bypasses the LLM provider strategy entirely. Instead, `claude_code_wrapper.py` runs Claude Code as a subprocess via the `claude-agent-sdk`. Chat messages are forwarded to the Claude Code process, which has full access to the local project directory. Tool calls (e.g. file reads/writes, shell commands) are handled by Claude Code itself, while structured actions still go through MCP HTTP and the server's approval matrix. Configuration is controlled via `--claude-model`, `--claude-permission-mode`, and `--claude-allowed-tools`.
 
+**Important:** Claude Code mode only works with Anthropic models. The Claude Code SDK uses the Anthropic Messages API (`/v1/messages`), which is not served by OpenAI-compatible endpoints (Ollama, vLLM, etc.). For local models, use the regular provider mode (`AI_PROVIDER=openai` with `AI_BASE_URL`).
+
 ### Key flows
 
 1. **Startup**: `_startup_sync()` calls `chat_who` which returns `self_user_id` — the agent resolves its own identity and display name from the member list. Then `chat_resync` seeds context, followed by an AI disclosure message.

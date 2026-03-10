@@ -111,9 +111,7 @@ martol --profile claude-code
 
 > Claude Code operates on the current directory, so you must `cd` into your project first.
 
-**With Ollama (no Anthropic key needed):**
-
-Claude Code can run on local Ollama models via [Anthropic API compatibility](https://docs.ollama.com/integrations/claude-code). Use `.env.claude-code-ollama` instead (see example below).
+> **Note:** Claude Code mode requires Anthropic models. For local models (Ollama, vLLM), use the regular provider mode with `AI_PROVIDER=openai` instead — see the [Ollama example](#example-profile-envollama) below.
 
 ## Security
 
@@ -193,7 +191,7 @@ cd /path/to/your/project
 martol --profile claude-code
 ```
 
-### Example profile: `.env.claude-code-ollama`
+### Example profile: `.env.ollama`
 
 ```env
 # Martol connection (get these from the room's member panel)
@@ -201,17 +199,11 @@ MARTOL_WS_URL=wss://martol.plitix.com/api/rooms/<roomId>/ws
 MARTOL_API_KEY=<agent-api-key>
 MARTOL_HMAC_SECRET=<hmac-secret>
 
-# Claude Code mode with Ollama backend
-# See: https://docs.ollama.com/integrations/claude-code
-AGENT_MODE=claude-code
-CLAUDE_CODE_MODEL=qwen3:14b
-CLAUDE_CODE_PERMISSION_MODE=default
-CLAUDE_CODE_ALLOWED_TOOLS=Read,Grep,Glob,LS
-
-# Point Claude Code at Ollama instead of Anthropic API
-ANTHROPIC_BASE_URL=http://localhost:11434
-ANTHROPIC_AUTH_TOKEN=ollama
-ANTHROPIC_API_KEY=
+# Ollama via OpenAI-compatible API
+AI_PROVIDER=openai
+AI_MODEL=qwen3:32b
+AI_API_KEY=ollama
+AI_BASE_URL=http://localhost:11434/v1
 
 # Agent behavior
 CONTEXT_MESSAGES=50
@@ -219,8 +211,7 @@ RESPOND_MODE=mention
 ```
 
 ```bash
-cd /path/to/your/project
-martol --profile claude-code-ollama
+martol --profile ollama
 ```
 
 ## Options
