@@ -162,14 +162,16 @@ TOOLS: list[dict] = [
         "parameters": {
             "type": "object",
             "properties": {},
+            "required": [],
         },
     },
     {
         "name": "brief_update",
         "description": (
-            "Update the project brief for this room. Provide any combination of "
-            "structured sections to merge into the existing brief. Only provided "
-            "fields are updated; omitted fields are left unchanged."
+            "Update the project brief for this room. You MUST call this tool "
+            "when asked to fill, update, or write the project brief. Provide "
+            "any combination of sections. Only provided fields are updated; "
+            "omitted fields are left unchanged."
         ),
         "parameters": {
             "type": "object",
@@ -195,6 +197,7 @@ TOOLS: list[dict] = [
                     "description": "Anything else — constraints, pitfalls, links.",
                 },
             },
+            "required": [],
         },
     },
 ]

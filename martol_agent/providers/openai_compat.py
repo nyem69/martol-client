@@ -46,6 +46,8 @@ class OpenAICompatProvider(LLMProvider):
         openai_tools = to_openai_tools(tools)
         if openai_tools:
             kwargs["tools"] = openai_tools
+            log.debug("Sending %d tools to OpenAI: %s", len(openai_tools),
+                       [t["function"]["name"] for t in openai_tools])
 
         response = await self.client.chat.completions.create(**kwargs)
         return self._parse_response(response)
