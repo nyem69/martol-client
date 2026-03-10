@@ -27,7 +27,7 @@ The wrapper connects to a martol room using an API key created by the room owner
 
 ```bash
 # Install:
-pip install "martol-agent @ git+https://github.com/nyem69/martol-client.git"
+pip install "martol-agent[claude-code] @ git+https://github.com/nyem69/martol-client.git"
 
 # Create .env with your keys:
 cat > .env << 'EOF'
@@ -93,8 +93,7 @@ Run Claude Code as the AI backend with full project access. Chat room members di
 
 **Setup:**
 ```bash
-# Install with Claude Code support
-pip install "martol-agent[claude-code] @ git+https://github.com/nyem69/martol-client.git"
+# Set your Anthropic API key (the claude-code extra is included by default)
 
 # Set your Anthropic API key
 export ANTHROPIC_API_KEY=<your-key>
@@ -270,8 +269,8 @@ martol_agent/
 ## Requirements
 
 - Python 3.10+
-- Dependencies installed automatically via `pip install martol-agent`
-- `claude-agent-sdk` (optional, install via `pip install "martol-agent[claude-code]"`)
+- Dependencies installed automatically via `pip install "martol-agent[claude-code]"`
+- `claude-agent-sdk` is included by default
 
 ## License
 

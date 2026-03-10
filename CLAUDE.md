@@ -30,7 +30,7 @@ martol_agent/
 ## Setup and Running
 
 ```bash
-# Install from git (with Claude Code support):
+# Install from git:
 pip install "martol-agent[claude-code] @ git+https://github.com/nyem69/martol-client.git"
 
 # Or local dev:
@@ -59,7 +59,7 @@ Defined in `pyproject.toml`. Core dependencies:
 | `aiohttp>=3.9.0` | Async HTTP for MCP calls |
 | `python-dotenv>=1.0.0` | Loads `.env` file into `os.environ` at startup |
 
-Optional: `claude-agent-sdk>=0.1.0` (install via `pip install "martol-agent[claude-code]"`).
+`claude-agent-sdk>=0.1.0` is included via the `[claude-code]` extra (always installed).
 
 ## Architecture
 

@@ -674,7 +674,7 @@ hr {
   <ol class="steps">
     <li>
       <strong>Install</strong>
-      <pre><code>pip install "martol-agent @ git+https://github.com/nyem69/martol-client.git"</code></pre>
+      <pre><code>pip install "martol-agent[claude-code] @ git+https://github.com/nyem69/martol-client.git"</code></pre>
     </li>
     <li>
       <strong>Create your environment file</strong>
@@ -1082,9 +1082,8 @@ martol \
   </p>
 
   <div class="callout info">
-    <span class="callout-label">Prerequisite</span>
-    Install with Claude Code support:
-    <code>pip install "martol-agent[claude-code] @ git+https://github.com/nyem69/martol-client.git"</code>
+    <span class="callout-label">Note</span>
+    Claude Code support is included in the default install.
   </div>
 
   <pre><code><span class="comment"># Run against a project directory</span>
@@ -1708,7 +1707,7 @@ action_type, risk_level, description, payload, trigger_message_id</code></pre>
         <tr>
           <td>"claude-agent-sdk required"</td>
           <td>Missing dependency</td>
-          <td><code>pip install "martol-agent[claude-code]"</code></td>
+          <td><code>pip install "martol-agent[claude-code] @ git+https://github.com/nyem69/martol-client.git"</code></td>
         </tr>
         <tr>
           <td>Tools always denied</td>
