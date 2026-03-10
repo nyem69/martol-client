@@ -108,9 +108,9 @@ class BaseWrapper:
 
                 ssl_context = ssl.create_default_context() if self.ws_url.startswith("wss://") else None
 
-                url = f"{self.ws_url}?apiKey={self.api_key}"
+                url = self.ws_url
                 if self.last_known_id:
-                    url += f"&lastKnownId={self.last_known_id}"
+                    url += f"?lastKnownId={self.last_known_id}"
 
                 async with websockets.connect(
                     url,
@@ -331,16 +331,16 @@ class BaseWrapper:
             log.info("Delta sync: %d messages", len(messages))
 
         elif msg_type == "id_map":
-            local_id = str(msg.get("localId", ""))
-            server_seq = str(msg.get("serverSeqId", ""))
-            db_id = str(msg.get("dbId", ""))
-            if server_seq and db_id:
-                self._id_map[server_seq] = db_id
-                # Prune if too large
-                if len(self._id_map) > self._SEEN_SEQ_MAX:
-                    keys = sorted(self._id_map.keys(), key=lambda k: int(k) if k.isdigit() else 0)
-                    for k in keys[:len(keys) // 2]:
-                        del self._id_map[k]
+            for mapping in msg.get("mappings", []):
+                server_seq = str(mapping.get("serverSeqId", ""))
+                db_id = str(mapping.get("dbId", ""))
+                if server_seq and db_id:
+                    self._id_map[server_seq] = db_id
+            # Prune if too large
+            if len(self._id_map) > self._SEEN_SEQ_MAX:
+                keys = sorted(self._id_map.keys(), key=lambda k: int(k) if k.isdigit() else 0)
+                for k in keys[:len(keys) // 2]:
+                    del self._id_map[k]
 
         elif msg_type == "error":
             code = msg.get("code", "")
