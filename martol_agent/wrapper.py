@@ -63,6 +63,7 @@ ALLOWED_TOOL_FIELDS = {
     "action_status": {"action_id"},
     "brief_get_active": set(),
     "brief_update": {"goal", "stack", "conventions", "phase", "notes"},
+    "doc_search": {"query", "top_k"},
 }
 
 
@@ -217,7 +218,12 @@ class AgentWrapper(BaseWrapper):
             f"- brief_update: Update the project brief sections. You MUST call "
             f"this tool when asked to fill, update, or write the project brief. "
             f"Provide any combination of: goal, stack, conventions, phase, notes. "
-            f"If you know about the project, fill in what you can.\n\n"
+            f"If you know about the project, fill in what you can.\n"
+            f"- doc_search: Search uploaded documents semantically. Returns "
+            f"matching text chunks with filenames and relevance scores. "
+            f"When citing results, include the citation marker (e.g. "
+            f"[📄 filename.pdf]) after the relevant statement so users "
+            f"can click to view the source.\n\n"
             f"For simple questions and conversation, respond directly without tools.\n"
             f"Keep responses concise and relevant to the discussion."
         )

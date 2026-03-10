@@ -200,6 +200,31 @@ TOOLS: list[dict] = [
             "required": [],
         },
     },
+    {
+        "name": "doc_search",
+        "description": (
+            "Search uploaded documents semantically. Returns matching text "
+            "chunks with filenames and relevance scores. Use when users ask "
+            "about document contents or when you need to reference uploaded "
+            "files. Include citation markers like [📄 filename.pdf] in your "
+            "response so users can click to view the source."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query (natural language).",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of results to return (1-20, default 5).",
+                    "default": 5,
+                },
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 
