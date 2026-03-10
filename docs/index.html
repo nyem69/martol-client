@@ -1153,6 +1153,55 @@ martol <span class="flag">--profile</span> <span class="value">claude-code</span
 
 <hr>
 
+<!-- ─── CODEX MODE ──────────────────────────────────── -->
+
+<section class="page-section" id="codex-mode">
+  <h2>Codex Mode</h2>
+  <p>
+    Runs <a href="https://github.com/openai/codex" target="_blank" rel="noopener">OpenAI Codex</a>
+    as an MCP server subprocess. Chat messages become prompts; Codex has full access to
+    the local project directory within its configured sandbox.
+  </p>
+
+  <div class="callout info">
+    <span class="callout-label">Prerequisites</span>
+    <code>codex</code> CLI in PATH (<code>npm install -g @openai/codex</code>) and
+    authenticated (<code>codex login</code> or <code>OPENAI_API_KEY</code> env var).
+    No extra Python dependencies needed.
+  </div>
+
+  <pre><code><span class="comment"># Run against a project directory</span>
+cd /path/to/your/project
+martol <span class="flag">--profile</span> <span class="value">codex</span></code></pre>
+
+  <h3>Configuration</h3>
+  <table>
+    <thead><tr><th>Variable</th><th>CLI Flag</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>CODEX_MODEL</code></td>
+        <td><code>--codex-model</code></td>
+        <td>Codex default</td>
+        <td>Model override (e.g. <code>o3</code>, <code>o4-mini</code>)</td>
+      </tr>
+      <tr>
+        <td><code>CODEX_SANDBOX</code></td>
+        <td><code>--codex-sandbox</code></td>
+        <td><code>read-only</code></td>
+        <td><code>read-only</code>, <code>workspace-write</code>, <code>danger-full-access</code></td>
+      </tr>
+      <tr>
+        <td><code>CODEX_APPROVAL_POLICY</code></td>
+        <td><code>--codex-approval-policy</code></td>
+        <td><code>on-failure</code></td>
+        <td><code>untrusted</code>, <code>on-failure</code>, <code>on-request</code>, <code>never</code></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<hr>
+
 <!-- ─── WEBSOCKET PROTOCOL ──────────────────────────── -->
 
 <section class="page-section" id="websocket">

@@ -113,6 +113,21 @@ martol --profile claude-code
 
 > **Note:** Claude Code mode requires Anthropic models. For local models (Ollama, vLLM), use the regular provider mode with `AI_PROVIDER=openai` instead — see the [Ollama example](#example-profile-envollama) below.
 
+### Codex Mode
+Run [OpenAI Codex](https://github.com/openai/codex) as the AI backend with full project access. Similar to Claude Code mode but uses OpenAI's Codex CLI via its MCP server interface.
+
+**Prerequisites:**
+- `codex` CLI installed (`npm install -g @openai/codex`)
+- Authenticated (`codex login` or `OPENAI_API_KEY` env var)
+
+**Running against any project:**
+```bash
+cd /path/to/your/project
+martol --profile codex
+```
+
+> No extra Python dependencies needed — Codex mode communicates with the `codex` CLI binary via MCP stdio.
+
 ## Security
 
 API keys grant full control of your agent. Handle them carefully:
@@ -131,6 +146,7 @@ API keys grant full control of your agent. Handle them carefully:
 | Anthropic | `--provider anthropic` | `claude-sonnet-4-20250514` |
 | OpenAI | `--provider openai` | `gpt-4o` |
 | OpenAI-compatible | `--provider openai --ai-base-url <url>` | Ollama, Groq, Together, vLLM, etc. |
+| Codex | `--mode codex` | OpenAI Codex CLI (requires `codex` in PATH) |
 
 ## Multiple Agents
 
@@ -191,6 +207,31 @@ cd /path/to/your/project
 martol --profile claude-code
 ```
 
+### Example profile: `.env.codex`
+
+```env
+# Martol connection (get these from the room's member panel)
+MARTOL_WS_URL=wss://martol.plitix.com/api/rooms/<roomId>/ws
+MARTOL_API_KEY=<agent-api-key>
+MARTOL_HMAC_SECRET=<hmac-secret>
+
+# Codex mode
+AGENT_MODE=codex
+CODEX_SANDBOX=read-only
+CODEX_APPROVAL_POLICY=on-failure
+
+# Codex uses OPENAI_API_KEY for auth (set separately or via codex login)
+
+# Agent behavior
+CONTEXT_MESSAGES=50
+RESPOND_MODE=mention
+```
+
+```bash
+cd /path/to/your/project
+martol --profile codex
+```
+
 ### Example profile: `.env.ollama`
 
 ```env
@@ -229,10 +270,13 @@ martol --profile ollama
 | `--mcp-url` | `MARTOL_MCP_URL` | Derived from WS URL | MCP HTTP endpoint base |
 | `--context` | `CONTEXT_MESSAGES` | `50` | Rolling context window size |
 | `--respond` | `RESPOND_MODE` | `mention` | `mention` (only @mentions) or `all` |
-| `--mode` | `AGENT_MODE` | `provider` | `provider` (LLM API) or `claude-code` |
+| `--mode` | `AGENT_MODE` | `provider` | `provider`, `claude-code`, or `codex` |
 | `--claude-model` | `CLAUDE_CODE_MODEL` | Claude default | Model for Claude Code mode |
 | `--claude-permission-mode` | `CLAUDE_CODE_PERMISSION_MODE` | `default` | Permission mode for Claude Code |
 | `--claude-allowed-tools` | `CLAUDE_CODE_ALLOWED_TOOLS` | — | Auto-approved tools (comma-separated) |
+| `--codex-model` | `CODEX_MODEL` | Codex default | Model override for Codex mode |
+| `--codex-sandbox` | `CODEX_SANDBOX` | `read-only` | `read-only`, `workspace-write`, `danger-full-access` |
+| `--codex-approval-policy` | `CODEX_APPROVAL_POLICY` | `on-failure` | `untrusted`, `on-failure`, `on-request`, `never` |
 
 ## Behavior
 
@@ -250,6 +294,7 @@ martol_agent/
 ├── __main__.py              # python -m martol_agent
 ├── wrapper.py               # AgentWrapper (WS + MCP + LLM orchestration)
 ├── claude_code_wrapper.py   # Claude Code bridge mode
+├── codex_wrapper.py         # OpenAI Codex bridge mode
 ├── tools.py                 # Canonical tool definitions
 └── providers/
     ├── __init__.py           # LLMProvider ABC + factory

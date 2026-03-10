@@ -19,6 +19,7 @@ martol_agent/
 ├── wrapper.py               # AgentWrapper — core orchestrator (WS + MCP + LLM)
 ├── tools.py                 # Provider-agnostic tool definitions + converters
 ├── claude_code_wrapper.py   # Claude Code bridge mode
+├── codex_wrapper.py         # OpenAI Codex bridge mode (MCP stdio)
 └── providers/
     ├── __init__.py           # LLMProvider ABC, ToolCall/LLMResponse dataclasses, factory
     ├── anthropic.py          # Anthropic Claude implementation
@@ -81,6 +82,10 @@ CLI args / env vars
 When `--mode claude-code` is used, the wrapper bypasses the LLM provider strategy entirely. Instead, `claude_code_wrapper.py` runs Claude Code as a subprocess via the `claude-agent-sdk`. Chat messages are forwarded to the Claude Code process, which has full access to the local project directory. Tool calls (e.g. file reads/writes, shell commands) are handled by Claude Code itself, while structured actions still go through MCP HTTP and the server's approval matrix. Configuration is controlled via `--claude-model`, `--claude-permission-mode`, and `--claude-allowed-tools`.
 
 **Important:** Claude Code mode only works with Anthropic models. The Claude Code SDK uses the Anthropic Messages API (`/v1/messages`), which is not served by OpenAI-compatible endpoints (Ollama, vLLM, etc.). For local models, use the regular provider mode (`AI_PROVIDER=openai` with `AI_BASE_URL`).
+
+### Codex mode
+
+When `--mode codex` is used, the wrapper runs `codex mcp-server` as a subprocess and communicates via JSON-RPC over stdio. The Codex MCP server exposes two tools: `codex` (start session) and `codex-reply` (continue conversation). Chat messages become prompts; Codex has full access to the local project directory within its sandbox. No extra Python dependencies — requires only the `codex` CLI binary in PATH (`npm install -g @openai/codex`). Codex authenticates via `codex login` or `OPENAI_API_KEY` env var. Configuration: `--codex-model`, `--codex-sandbox`, `--codex-approval-policy`.
 
 ### Key flows
 
