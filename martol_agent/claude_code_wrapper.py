@@ -344,7 +344,7 @@ class ClaudeCodeWrapper(BaseWrapper):
 
                 # Filter to valid keys only
                 valid_keys = {"goal", "stack", "conventions", "phase", "notes"}
-                filtered = {k: v for k, v in params.items() if k in valid_keys and isinstance(v, str)}
+                filtered = {k: v for k, v in params.items() if k in valid_keys and isinstance(v, str) and v.strip()}
                 if not filtered:
                     continue
 

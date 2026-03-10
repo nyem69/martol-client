@@ -495,7 +495,7 @@ class BaseWrapper:
             self._http_session = aiohttp.ClientSession()
 
         url = f"{self.mcp_url}/mcp/v1"
-        body = {"tool": tool, "arguments": params}
+        body = {"tool": tool, "params": params}
         headers = {"x-api-key": self.api_key, "Content-Type": "application/json"}
 
         try:
