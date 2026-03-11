@@ -12,10 +12,9 @@ import asyncio
 import json
 import logging
 import os
-import time
 
 try:
-    from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+    from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions, create_sdk_mcp_server, tool
     from claude_agent_sdk.types import (
         AssistantMessage,
         ResultMessage,
@@ -150,26 +149,60 @@ class ClaudeCodeWrapper(BaseWrapper):
             "Only include sections you want to update. Omitted sections stay unchanged.\n"
         )
 
-        # Instruct how to search uploaded documents
+        # Instruct how to search uploaded documents (native MCP tool)
         system_append += (
             "\nDOCUMENT SEARCH CAPABILITY:\n"
-            "Users can upload documents (PDFs, text files, etc.) to the room. "
-            "These documents are indexed and searchable via semantic search.\n"
-            "To search uploaded documents, output a fenced JSON block tagged "
-            "`doc_search`. The wrapper will call the server API and return results.\n"
-            "Format:\n"
-            "```doc_search\n"
-            '{"query": "your search query here", "top_k": 5}\n'
-            "```\n"
-            "The search results will be injected into the conversation so you can "
-            "use them to answer the user's question.\n\n"
+            "Users can upload documents (PDFs, text files, etc.) to this room. "
+            "These are indexed and searchable via the `doc_search` tool.\n\n"
             "IMPORTANT — When to use doc_search:\n"
             "- When a user asks about a document, PDF, report, or uploaded file\n"
             "- When a user references a document title or filename\n"
             "- When a question could be answered by uploaded materials\n"
-            "- ALWAYS try doc_search BEFORE saying you don't have access to a document\n"
-            "- After receiving search results, cite sources with [📄 filename.pdf]\n"
+            "- ALWAYS use doc_search BEFORE saying you don't have access to a document\n"
+            "- ALWAYS use doc_search INSTEAD OF WebSearch for room documents\n"
+            "- After receiving results, cite sources with [📄 filename]\n"
         )
+
+        # Build doc_search SDK MCP tool (closure captures self for MCP calls)
+        wrapper_ref = self
+
+        @tool(
+            "doc_search",
+            "Search uploaded documents in this chat room using semantic search. "
+            "Use this when users ask about uploaded files, PDFs, reports, or documents.",
+            {"query": str, "top_k": int},
+        )
+        async def doc_search_tool(args: dict) -> dict:
+            query = str(args.get("query", ""))
+            top_k = int(args.get("top_k", 5))
+            log.info("doc_search SDK tool called: query=%r top_k=%d", query, top_k)
+
+            result = await wrapper_ref._mcp_call("doc_search", {"query": query, "top_k": top_k})
+            if result and result.get("ok"):
+                data = result.get("data", {})
+                results = data.get("results", [])
+                if not results:
+                    return {"content": [{"type": "text", "text": "No matching documents found."}]}
+
+                parts = [f"Found {len(results)} relevant document chunks:\n"]
+                for i, r in enumerate(results, 1):
+                    score = r.get("score", 0)
+                    filename = r.get("filename", "unknown")
+                    content = r.get("content", "")
+                    citation = r.get("citation", f"[📄 {filename}]")
+                    parts.append(f"--- Result {i} (score: {score:.3f}) {citation} ---\n{content}\n")
+                parts.append("\nCite sources with [📄 filename] after relevant statements.")
+                return {"content": [{"type": "text", "text": "\n".join(parts)}]}
+            else:
+                err = result.get("error", "unknown") if result else "MCP call failed"
+                return {"content": [{"type": "text", "text": f"Document search failed: {err}"}], "is_error": True}
+
+        martol_mcp = create_sdk_mcp_server("martol", tools=[doc_search_tool])
+
+        # Ensure doc_search is in allowed_tools (SDK MCP tools may be namespaced)
+        for name in ["doc_search", "mcp__martol__doc_search"]:
+            if name not in self.claude_allowed_tools:
+                self.claude_allowed_tools.append(name)
 
         options = ClaudeAgentOptions(
             system_prompt={"type": "preset", "preset": "claude_code", "append": system_append},
@@ -179,13 +212,17 @@ class ClaudeCodeWrapper(BaseWrapper):
             cwd=os.getcwd(),
             include_partial_messages=False,
             setting_sources=["user", "project", "local"],
+            mcp_servers={"martol": martol_mcp},
         )
         if self.claude_model:
             options.model = self.claude_model
 
+        log.info("MCP servers: %s", list(options.mcp_servers.keys()) if isinstance(options.mcp_servers, dict) else options.mcp_servers)
+        log.info("Allowed tools: %s", options.allowed_tools)
+
         self.claude_client = ClaudeSDKClient(options=options)
         await self.claude_client.connect()
-        log.info("Claude Code session started")
+        log.info("Claude Code session started (with doc_search MCP tool)")
 
     async def _stop_claude_session(self) -> None:
         """Stop the Claude Code SDK session gracefully."""
@@ -408,71 +445,6 @@ class ClaudeCodeWrapper(BaseWrapper):
 
         return text
 
-    # ── Document Search Interception ─────────────────────────────────
-
-    async def _handle_doc_search_blocks(self, text: str) -> tuple[str, list[dict]]:
-        """Scan response for ```doc_search blocks, call MCP, return results.
-
-        Returns (cleaned_text, search_results). If search results are found,
-        they should be fed back to Claude Code for a follow-up response.
-        """
-        import re
-        pattern = re.compile(r"```doc_search\s*\n(.*?)\n```", re.DOTALL)
-
-        matches = list(pattern.finditer(text))
-        if not matches:
-            return text, []
-
-        all_results: list[dict] = []
-        for match in reversed(matches):
-            try:
-                params = json.loads(match.group(1))
-                if not isinstance(params, dict) or "query" not in params:
-                    continue
-
-                query = str(params["query"])
-                top_k = int(params.get("top_k", 5))
-                log.info("doc_search intercepted: query=%r top_k=%d", query, top_k)
-
-                result = await self._mcp_call("doc_search", {"query": query, "top_k": top_k})
-                if result and result.get("ok"):
-                    data = result.get("data", {})
-                    results = data.get("results", [])
-                    all_results.extend(results)
-                    replacement = f"*Searching documents for: {query}...*"
-                    log.info("doc_search returned %d results", len(results))
-                else:
-                    err = result.get("error", "unknown") if result else "MCP call failed"
-                    replacement = f"**Document search failed:** {err}"
-                    log.warning("doc_search failed: %s", err)
-
-                text = text[:match.start()] + replacement + text[match.end():]
-            except (json.JSONDecodeError, Exception) as e:
-                log.warning("Failed to parse doc_search block: %s", e)
-
-        return text, all_results
-
-    def _format_search_results(self, results: list[dict]) -> str:
-        """Format doc_search results as context for Claude Code."""
-        if not results:
-            return "No matching documents found."
-
-        parts = [f"Found {len(results)} relevant document chunks:\n"]
-        for i, r in enumerate(results, 1):
-            score = r.get("score", 0)
-            filename = r.get("filename", "unknown")
-            content = r.get("content", "")
-            citation = r.get("citation", f"[📄 {filename}]")
-            parts.append(
-                f"--- Result {i} (score: {score:.3f}) {citation} ---\n"
-                f"{content}\n"
-            )
-        parts.append(
-            "\nUse these results to answer the user's question. "
-            "Cite sources with [📄 filename.pdf] after relevant statements."
-        )
-        return "\n".join(parts)
-
     # ── Claude Code Prompt ───────────────────────────────────────────
 
     async def _send_to_claude(self, trigger: dict) -> None:
@@ -511,32 +483,8 @@ class ClaudeCodeWrapper(BaseWrapper):
                 if text_parts:
                     full_text = "\n".join(text_parts)
 
-                    # Intercept doc_search blocks — call MCP and feed results back
-                    full_text, search_results = await self._handle_doc_search_blocks(full_text)
-                    if search_results:
-                        # Feed search results back to Claude Code for a follow-up answer
-                        context = self._format_search_results(search_results)
-                        log.info("Feeding %d search results back to Claude Code", len(search_results))
-                        await self.claude_client.query(
-                            f"[System] Document search results:\n\n{context}"
-                        )
-                        # Collect the follow-up response
-                        followup_parts: list[str] = []
-                        async for message in self.claude_client.receive_response():
-                            if isinstance(message, AssistantMessage):
-                                for block in message.content:
-                                    if isinstance(block, TextBlock):
-                                        followup_parts.append(block.text)
-                            elif isinstance(message, ResultMessage):
-                                if message.is_error:
-                                    log.error("Claude Code follow-up error: %s", message.result)
-                        if followup_parts:
-                            full_text = "\n".join(followup_parts)
-                        # Process any brief_update blocks in the follow-up
-                        full_text = await self._handle_brief_update_blocks(full_text)
-                    else:
-                        # No doc_search — process brief_update blocks normally
-                        full_text = await self._handle_brief_update_blocks(full_text)
+                    # Intercept brief_update fenced blocks
+                    full_text = await self._handle_brief_update_blocks(full_text)
 
                     # Chunk long responses (martol may have message size limits)
                     max_len = 4000
