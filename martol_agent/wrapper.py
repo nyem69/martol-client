@@ -224,6 +224,12 @@ class AgentWrapper(BaseWrapper):
             f"When citing results, include the citation marker (e.g. "
             f"[📄 filename.pdf]) after the relevant statement so users "
             f"can click to view the source.\n\n"
+            f"IMPORTANT — When to use doc_search:\n"
+            f"- When a user asks about a document, PDF, report, or uploaded file\n"
+            f"- When a user references a document title or filename\n"
+            f"- When a user asks a question that could be answered by uploaded materials\n"
+            f"- When you don't know the answer but documents may have been uploaded\n"
+            f"- ALWAYS try doc_search before saying you don't have access to a document\n\n"
             f"For simple questions and conversation, respond directly without tools.\n"
             f"Keep responses concise and relevant to the discussion."
         )
