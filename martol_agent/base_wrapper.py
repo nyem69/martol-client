@@ -60,6 +60,7 @@ class BaseWrapper:
         self.agent_user_id: str | None = None
         self.agent_name: str | None = None
         self.room_name: str = "unknown"
+        self.room_id: str | None = None  # org/room ID for MCP context
         self.room_brief: str | None = None
         self.room_brief_version: int = 0
         self.last_known_id: int = 0
@@ -191,6 +192,7 @@ class BaseWrapper:
         if who and who.get("ok"):
             data = who.get("data", {})
             self.room_name = data.get("room_name", "unknown")
+            self.room_id = data.get("room_id")
             self.room_brief = data.get("brief")
             self.room_brief_version = data.get("brief_version", 0)
             self.agent_user_id = data.get("self_user_id")
@@ -499,6 +501,8 @@ class BaseWrapper:
         url = f"{self.mcp_url}/mcp/v1"
         body = {"tool": tool, "params": params}
         headers = {"x-api-key": self.api_key, "Content-Type": "application/json"}
+        if self.room_id:
+            headers["x-org-id"] = self.room_id
 
         try:
             async with self._http_session.post(
