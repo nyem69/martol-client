@@ -38,6 +38,13 @@ def derive_mcp_url(ws_url: str) -> str:
 class BaseWrapper:
     """Shared logic for WebSocket + MCP communication with martol server."""
 
+    @staticmethod
+    def _extract_room_id(ws_url: str) -> str | None:
+        """Extract room/org ID from WebSocket URL path (e.g. /api/rooms/{id}/ws)."""
+        import re
+        match = re.search(r"/api/rooms/([^/]+)/ws", ws_url)
+        return match.group(1) if match else None
+
     def __init__(
         self,
         ws_url: str,
@@ -60,7 +67,7 @@ class BaseWrapper:
         self.agent_user_id: str | None = None
         self.agent_name: str | None = None
         self.room_name: str = "unknown"
-        self.room_id: str | None = None  # org/room ID for MCP context
+        self.room_id: str | None = self._extract_room_id(ws_url)  # org/room ID for MCP context
         self.room_brief: str | None = None
         self.room_brief_version: int = 0
         self.last_known_id: int = 0
