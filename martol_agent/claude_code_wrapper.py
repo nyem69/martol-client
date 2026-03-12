@@ -178,25 +178,29 @@ class ClaudeCodeWrapper(BaseWrapper):
             log.info("doc_search SDK tool called: query=%r top_k=%d", query, top_k)
 
             result = await wrapper_ref._mcp_call("doc_search", {"query": query, "top_k": top_k})
-            if result and result.get("ok"):
-                data = result.get("data", {})
-                results = data.get("results", [])
-                log.info("doc_search returned %d results for query=%r", len(results), query)
-                if not results:
-                    return {"content": [{"type": "text", "text": "No matching documents found."}]}
-
-                parts = [f"Found {len(results)} relevant document chunks:\n"]
-                for i, r in enumerate(results, 1):
-                    score = r.get("score", 0)
-                    filename = r.get("filename", "unknown")
-                    content = r.get("content", "")
-                    citation = r.get("citation", f"[📄 {filename}]")
-                    parts.append(f"--- Result {i} (score: {score:.3f}) {citation} ---\n{content}\n")
-                parts.append("\nCite sources with [📄 filename] after relevant statements.")
-                return {"content": [{"type": "text", "text": "\n".join(parts)}]}
-            else:
-                err = result.get("error", "unknown") if result else "MCP call failed"
+            if not result:
+                log.warning("doc_search query=%r → MCP call returned None", query)
+                return {"content": [{"type": "text", "text": "Document search failed: no response from server"}], "is_error": True}
+            if not result.get("ok"):
+                err = result.get("error", "unknown")
+                log.warning("doc_search query=%r → error: %s", query, err)
                 return {"content": [{"type": "text", "text": f"Document search failed: {err}"}], "is_error": True}
+
+            data = result.get("data", {})
+            results = data.get("results", [])
+            log.info("doc_search query=%r → %d results", query, len(results))
+            if not results:
+                return {"content": [{"type": "text", "text": "No matching documents found."}]}
+
+            parts = [f"Found {len(results)} relevant document chunks:\n"]
+            for i, r in enumerate(results, 1):
+                score = r.get("score", 0)
+                filename = r.get("filename", "unknown")
+                content = r.get("content", "")
+                citation = r.get("citation", f"[📄 {filename}]")
+                parts.append(f"--- Result {i} (score: {score:.3f}) {citation} ---\n{content}\n")
+            parts.append("\nCite sources with [📄 filename] after relevant statements.")
+            return {"content": [{"type": "text", "text": "\n".join(parts)}]}
 
         martol_mcp = create_sdk_mcp_server("martol", tools=[doc_search_tool])
 
