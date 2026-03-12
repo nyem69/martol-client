@@ -430,8 +430,8 @@ async def main() -> None:
     else:
         load_dotenv()
 
-    from martol_agent import __version__
-    log.info("martol-agent %s", __version__)
+    from martol_agent import __version__, __build__
+    log.info("martol-agent %s (build %s)", __version__, __build__)
 
     # Check .env file permissions (ME-20)
     env_path = f".env.{pre_args.profile}" if pre_args.profile else ".env"
@@ -440,7 +440,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Martol Agent Wrapper")
     parser.add_argument(
         "--version", action="version",
-        version=f"martol-agent {__import__('martol_agent').__version__}",
+        version=f"martol-agent {__import__('martol_agent').__version__} (build {__import__('martol_agent').__build__})",
     )
     parser.add_argument(
         "--profile", default=None, help="Named profile (loads .env.<profile>)"

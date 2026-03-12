@@ -181,6 +181,7 @@ class ClaudeCodeWrapper(BaseWrapper):
             if result and result.get("ok"):
                 data = result.get("data", {})
                 results = data.get("results", [])
+                log.info("doc_search returned %d results for query=%r", len(results), query)
                 if not results:
                     return {"content": [{"type": "text", "text": "No matching documents found."}]}
 

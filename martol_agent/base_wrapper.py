@@ -132,7 +132,7 @@ class BaseWrapper:
                 ) as ws:
                     self.ws = ws
                     attempt = 0
-                    log.info("Connected to %s", self.ws_url)
+                    log.info("Connected to %s (room_id=%s)", self.ws_url, self.room_id or "unknown")
 
                     if not self.agent_user_id:
                         await self._startup_sync()
@@ -510,6 +510,8 @@ class BaseWrapper:
         headers = {"x-api-key": self.api_key, "Content-Type": "application/json"}
         if self.room_id:
             headers["x-org-id"] = self.room_id
+        if tool == "doc_search":
+            log.info("doc_search MCP call: room_id=%s, params=%s", self.room_id, params)
 
         try:
             async with self._http_session.post(
