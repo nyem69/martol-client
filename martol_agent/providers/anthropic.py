@@ -2,6 +2,7 @@
 
 import json
 import logging
+from collections.abc import AsyncIterator
 
 import anthropic
 
@@ -41,6 +42,29 @@ class AnthropicProvider(LLMProvider):
 
         response = await self.client.messages.create(**kwargs)
         return self._parse_response(response)
+
+    async def stream_chat(
+        self,
+        system: str,
+        messages: list[dict],
+        tools: list[dict],
+    ) -> AsyncIterator[str | LLMResponse]:
+        """Stream a chat response. Yields str deltas, then a final LLMResponse."""
+        kwargs: dict = {
+            "model": self.model,
+            "max_tokens": 4096,
+            "system": system,
+            "messages": messages,
+        }
+        anthropic_tools = to_anthropic_tools(tools)
+        if anthropic_tools:
+            kwargs["tools"] = anthropic_tools
+
+        async with self.client.messages.stream(**kwargs) as stream:
+            async for text in stream.text_stream:
+                yield text
+            response = await stream.get_final_message()
+            yield self._parse_response(response)
 
     def _parse_response(self, response: anthropic.types.Message) -> LLMResponse:
         text_parts: list[str] = []

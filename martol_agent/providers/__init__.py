@@ -1,6 +1,7 @@
 """LLM provider abstraction for multi-provider AI integration."""
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 
@@ -43,6 +44,18 @@ class LLMProvider(ABC):
             Normalized LLMResponse with text and/or tool calls.
         """
         ...
+
+    @abstractmethod
+    async def stream_chat(
+        self,
+        system: str,
+        messages: list[dict],
+        tools: list[dict],
+    ) -> AsyncIterator[str | LLMResponse]:
+        """Stream a chat response. Yields str deltas, then a final LLMResponse."""
+        ...
+        # Make this a valid async generator for type checking
+        yield  # type: ignore  # pragma: no cover
 
 
 def create_provider(

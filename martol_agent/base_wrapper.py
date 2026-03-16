@@ -555,6 +555,53 @@ class BaseWrapper:
             log.error("Failed to send message: %s", e)
             return False
 
+    async def send_stream_start(self, local_id: str, reply_to: int | None = None) -> bool:
+        """Signal start of a streaming response."""
+        try:
+            if not self.ws or self.ws.closed:
+                return False
+            payload: dict = {"type": "stream_start", "localId": local_id}
+            if reply_to is not None:
+                payload["replyTo"] = reply_to
+            await self.ws.send(json.dumps(payload))
+            return True
+        except Exception as e:
+            log.warning("Failed to send stream_start: %s", e)
+            return False
+
+    async def send_stream_delta(self, local_id: str, delta: str) -> bool:
+        """Send a text delta for an active stream."""
+        try:
+            if not self.ws or self.ws.closed:
+                return False
+            await self.ws.send(json.dumps({
+                "type": "stream_delta",
+                "localId": local_id,
+                "delta": delta,
+            }))
+            return True
+        except Exception:
+            return False  # Delta loss is non-fatal, don't log
+
+    async def send_stream_end(self, local_id: str, body: str) -> bool:
+        """Finalize a stream with the canonical full body text."""
+        try:
+            if not self.ws or self.ws.closed:
+                return False
+            body_bytes = len(body.encode("utf-8"))
+            if body_bytes > 32 * 1024:
+                log.warning("Stream body too large (%d bytes), truncating", body_bytes)
+                body = body[:32000]  # rough truncation
+            await self.ws.send(json.dumps({
+                "type": "stream_end",
+                "localId": local_id,
+                "body": body,
+            }))
+            return True
+        except Exception as e:
+            log.warning("Failed to send stream_end: %s", e)
+            return False
+
     async def send_typing(self, is_typing: bool = True):
         """Send typing indicator via WebSocket."""
         if not self.ws:

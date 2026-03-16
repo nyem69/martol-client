@@ -33,6 +33,7 @@ import os
 import signal
 import sys
 import time
+from uuid import uuid4
 
 from dotenv import load_dotenv
 
@@ -162,41 +163,91 @@ class AgentWrapper(BaseWrapper):
     # ── Response Generation ──────────────────────────────────────────
 
     async def _generate_response(self, payload: dict) -> None:
-        """Generate and send an LLM response."""
+        """Generate and send a streaming LLM response."""
         async with self._responding:
             try:
-                await self.send_typing(True)
-
                 if not self.llm_limiter.allow():
                     log.warning("LLM rate limit exceeded, skipping")
                     return
 
                 system = self._build_system_prompt()
                 messages = self._build_llm_messages()
+                trigger_seq_id = payload.get("serverSeqId") or payload.get("id")
 
-                log.info("Calling LLM with %d context messages...", len(messages))
-                response = await self.provider.chat(system, messages, TOOLS)
+                iteration = 0
+                while iteration < MAX_TOOL_ITERATIONS:
+                    if not self.ws or self.ws.closed:
+                        break
 
-                await self._process_response(response, payload)
+                    local_id = uuid4().hex
+                    full_body = ""
+                    response = None
+
+                    # Stream this turn
+                    await self.send_stream_start(
+                        local_id,
+                        reply_to=trigger_seq_id if iteration == 0 else None,
+                    )
+
+                    try:
+                        async for chunk in self.provider.stream_chat(system, messages, TOOLS):
+                            if isinstance(chunk, str):
+                                full_body += chunk
+                                await self.send_stream_delta(local_id, chunk)
+                            elif isinstance(chunk, LLMResponse):
+                                response = chunk
+                    except Exception as e:
+                        log.error("LLM streaming error: %s", e)
+
+                    # Commit whatever was generated
+                    if full_body.strip():
+                        await self.send_stream_end(local_id, full_body.strip())
+                        # Append to conversation context
+                        self._append_context({
+                            "sender_id": self.agent_user_id or "agent",
+                            "sender_name": self.agent_name or "Agent",
+                            "sender_role": "agent",
+                            "body": full_body.strip(),
+                        })
+                    else:
+                        # No text generated (tool-only response) — close stream cleanly
+                        await self.send_stream_end(local_id, "")
+
+                    # Exit if no tool calls
+                    if not response or not response.tool_calls:
+                        break
+
+                    # Execute tools via MCP (no streaming needed)
+                    tool_results = []
+                    for tc in response.tool_calls:
+                        clean_args = _validate_tool_args(tc.name, tc.arguments)
+                        result = await self._mcp_call(tc.name, clean_args)
+                        tool_results.append({"tool_call": tc, "result": result})
+                        # Preserve brief_update side-effect
+                        if tc.name == "brief_update" and result and result.get("ok"):
+                            new_ver = result.get("data", {}).get("version", 0)
+                            if new_ver:
+                                self.room_brief_version = new_ver
+                                # Re-fetch to get the full serialized brief
+                                brief = await self._mcp_call("brief_get_active", {})
+                                if brief and brief.get("ok"):
+                                    self.room_brief = brief.get("data", {}).get("brief")
+                                    log.info("Brief updated to v%d via brief_update tool", new_ver)
+
+                    # Build follow-up messages for next turn
+                    follow_up = self._build_tool_result_messages(response, tool_results)
+                    if not follow_up:
+                        break
+
+                    messages = self._build_llm_messages()
+                    messages.extend(follow_up)
+                    iteration += 1
 
             except asyncio.TimeoutError:
-                log.error("LLM call timed out")
-                await self.send_message(
-                    "[AI Agent] Unable to respond — the request timed out. Please try again."
-                )
-            except Exception as e:
-                err_str = str(e)
-                # Truncate HTML error pages (e.g. Cloudflare 502) to first line
-                if '<' in err_str and len(err_str) > 200:
-                    first_line = err_str.split('\n', 1)[0][:200]
-                    log.error("LLM call failed: %s...", first_line)
-                else:
-                    log.error("LLM call failed: %s", e)
-                await self.send_message(
-                    "[AI Agent] Unable to respond — the AI service may be experiencing issues."
-                )
-            finally:
-                await self.send_typing(False)
+                log.error("LLM request timed out")
+                await self.send_message("[Agent] Request timed out.")
+            except Exception:
+                log.exception("Error in _generate_response")
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt with room context."""
@@ -311,64 +362,6 @@ class AgentWrapper(BaseWrapper):
             messages = [{"role": "user", "content": "(no recent messages)"}]
 
         return messages
-
-    async def _process_response(
-        self, response: LLMResponse, trigger: dict
-    ) -> None:
-        """Process LLM response: send text and/or execute tool calls."""
-        iteration = 0
-
-        while iteration < MAX_TOOL_ITERATIONS:
-            if not self.ws or (hasattr(self.ws, 'closed') and self.ws.closed):
-                log.warning("WebSocket closed during tool loop, aborting")
-                break
-
-            # Send any text content as a chat message
-            if response.text and response.text.strip():
-                reply_to = trigger.get("serverSeqId") or trigger.get("id")
-                await self.send_message(response.text.strip(), reply_to=reply_to)
-
-            # If no tool calls, we're done
-            if not response.tool_calls:
-                break
-
-            # Execute tool calls via MCP HTTP
-            tool_results: list[dict] = []
-            for tc in response.tool_calls:
-                clean_args = _validate_tool_args(tc.name, tc.arguments)
-                log.debug("Tool args: %s", json.dumps(clean_args)[:200])
-                result = await self._mcp_call(tc.name, clean_args)
-                log.info("Tool: %s → %d bytes", tc.name, len(json.dumps(result)) if result else 0)
-                log.debug("Tool result: %s", json.dumps(result)[:200])
-                tool_results.append({"tool_call": tc, "result": result})
-
-                # Update local brief state after successful brief_update
-                if tc.name == "brief_update" and result and result.get("ok"):
-                    new_ver = result.get("data", {}).get("version", 0)
-                    if new_ver:
-                        self.room_brief_version = new_ver
-                        # Re-fetch to get the full serialized brief
-                        brief = await self._mcp_call("brief_get_active", {})
-                        if brief and brief.get("ok"):
-                            self.room_brief = brief.get("data", {}).get("brief")
-                            log.info("Brief updated to v%d via brief_update tool", new_ver)
-
-            # Build follow-up messages with tool results
-            follow_up = self._build_tool_result_messages(response, tool_results)
-            if not follow_up:
-                break
-
-            # Call LLM again with tool results
-            system = self._build_system_prompt()
-            messages = self._build_llm_messages()
-            messages.extend(follow_up)
-
-            log.info("Calling LLM with tool results (iteration %d)...", iteration + 1)
-            response = await self.provider.chat(system, messages, TOOLS)
-            iteration += 1
-
-        if iteration >= MAX_TOOL_ITERATIONS:
-            log.warning("Hit max tool iterations (%d), stopping", MAX_TOOL_ITERATIONS)
 
     def _build_tool_result_messages(
         self, response: LLMResponse, tool_results: list[dict]
