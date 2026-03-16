@@ -193,11 +193,14 @@ class AgentWrapper(BaseWrapper):
                         async for chunk in self.provider.stream_chat(system, messages, TOOLS):
                             if isinstance(chunk, str):
                                 full_body += chunk
-                                await self.send_stream_delta(local_id, chunk)
+                                await self.send_stream_delta_buffered(local_id, chunk)
                             elif isinstance(chunk, LLMResponse):
                                 response = chunk
                     except Exception as e:
                         log.error("LLM streaming error: %s", e)
+
+                    # Flush any remaining buffered deltas before finalizing
+                    await self._flush_delta_buffer()
 
                     # Commit whatever was generated
                     if full_body.strip():
@@ -210,8 +213,13 @@ class AgentWrapper(BaseWrapper):
                             "body": full_body.strip(),
                         })
                     else:
-                        # No text generated (tool-only response) — close stream cleanly
-                        await self.send_stream_end(local_id, "")
+                        # No text generated — close stream cleanly
+                        if response and response.tool_calls:
+                            # Tool-only response — normal, just close the stream
+                            await self.send_stream_end(local_id, "")
+                        else:
+                            # Error or empty response — show user-visible message
+                            await self.send_stream_end(local_id, "[Response generation failed — please try again.]")
 
                     # Exit if no tool calls
                     if not response or not response.tool_calls:

@@ -12,6 +12,7 @@ from martol_agent.wrapper import (
     RateLimiter,
     AgentWrapper,
     MAX_TOOL_RESULT_LENGTH,
+    MAX_TOOL_ITERATIONS,
     ALLOWED_TOOL_FIELDS,
 )
 from martol_agent.providers import LLMResponse, ToolCall
@@ -261,19 +262,46 @@ class TestBuildSystemPrompt:
         assert "UNTRUSTED" in prompt
 
 
-# ── _process_response ────────────────────────────────────────────────
+# ── _generate_response (streaming) ───────────────────────────────────
 
 
-class TestProcessResponse:
+def _mock_stream(text_chunks, response):
+    """Create a mock stream_chat that yields str chunks then a final LLMResponse."""
+    async def _gen(*args, **kwargs):
+        for chunk in text_chunks:
+            yield chunk
+        yield response
+    return _gen
+
+
+class TestGenerateResponse:
     @pytest.mark.asyncio
-    async def test_text_only_sends_message(self):
+    async def test_text_only_streams_and_commits(self):
         w = _make_agent_wrapper()
         w.ws = AsyncMock()
         w.ws.closed = False
+        w.agent_user_id = "agent-1"
+        w.agent_name = "Bot"
+        w.conversation = [
+            {"sender_id": "user-1", "sender_name": "Alice", "body": "hello"},
+        ]
+
         response = LLMResponse(text="Hello!", tool_calls=[])
-        trigger = {"serverSeqId": 1}
-        await w._process_response(response, trigger)
-        w.ws.send.assert_called_once()
+        w.provider.stream_chat = _mock_stream(["Hel", "lo!"], response)
+
+        await w._generate_response({"serverSeqId": 1})
+
+        # Verify streaming lifecycle (deltas may be coalesced by buffering)
+        calls = [json.loads(c.args[0]) for c in w.ws.send.call_args_list]
+        types = [c["type"] for c in calls]
+        assert types[0] == "stream_start"
+        assert types[-1] == "stream_end"
+        assert any(t == "stream_delta" for t in types)
+        # stream_start should carry replyTo on first iteration
+        assert calls[0]["replyTo"] == 1
+        # stream_end should carry the full body
+        end_call = next(c for c in calls if c["type"] == "stream_end")
+        assert end_call["body"] == "Hello!"
 
     @pytest.mark.asyncio
     async def test_tool_loop_executes(self):
@@ -282,23 +310,45 @@ class TestProcessResponse:
         w.ws.closed = False
         w.agent_user_id = "agent-1"
         w.agent_name = "Bot"
+        w.conversation = [
+            {"sender_id": "user-1", "sender_name": "Alice", "body": "do it"},
+        ]
 
-        # First response has tool call, second has text only
-        tc = ToolCall(id="tc_1", name="action_submit", arguments={"action_type": "code_write", "risk_level": "low", "description": "test", "trigger_message_id": 1})
+        tc = ToolCall(id="tc_1", name="action_submit", arguments={
+            "action_type": "code_write", "risk_level": "low",
+            "description": "test", "trigger_message_id": 1,
+        })
         first_response = LLMResponse(text=None, tool_calls=[tc], stop_reason="tool_use")
         second_response = LLMResponse(text="Done!", tool_calls=[])
 
-        w._mcp_call = AsyncMock(return_value={"ok": True, "data": {}})
-        w.provider.chat = AsyncMock(return_value=second_response)
+        # First call: tool call only, second call: text only
+        call_count = 0
 
-        # Need to mock the tool result building
+        async def _stream_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield first_response
+            else:
+                yield "Done!"
+                yield second_response
+
+        w.provider.stream_chat = _stream_side_effect
+        w._mcp_call = AsyncMock(return_value={"ok": True, "data": {}})
+
         with patch.object(w, '_build_tool_result_messages', return_value=[
             {"role": "assistant", "content": [{"type": "tool_use", "id": "tc_1", "name": "action_submit", "input": {}}]},
             {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tc_1", "content": "{}"}]},
         ]):
-            await w._process_response(first_response, {"serverSeqId": 1})
+            await w._generate_response({"serverSeqId": 1})
 
         w._mcp_call.assert_called_once()
+        assert call_count == 2
+        # Should have stream_start/end for each iteration (2 iterations)
+        calls = [json.loads(c.args[0]) for c in w.ws.send.call_args_list]
+        types = [c["type"] for c in calls]
+        assert types.count("stream_start") == 2
+        assert types.count("stream_end") == 2
 
     @pytest.mark.asyncio
     async def test_max_iterations_stops(self):
@@ -307,57 +357,136 @@ class TestProcessResponse:
         w.ws.closed = False
         w.agent_user_id = "agent-1"
         w.agent_name = "Bot"
+        w.conversation = [
+            {"sender_id": "user-1", "sender_name": "Alice", "body": "loop"},
+        ]
 
         tc = ToolCall(id="tc_1", name="action_status", arguments={"action_id": 1})
-        # Always return tool calls
         looping_response = LLMResponse(text=None, tool_calls=[tc], stop_reason="tool_use")
 
+        stream_call_count = 0
+
+        async def _stream_always_tool(*args, **kwargs):
+            nonlocal stream_call_count
+            stream_call_count += 1
+            yield looping_response
+
+        w.provider.stream_chat = _stream_always_tool
         w._mcp_call = AsyncMock(return_value={"ok": True})
-        w.provider.chat = AsyncMock(return_value=looping_response)
 
         with patch.object(w, '_build_tool_result_messages', return_value=[
             {"role": "assistant", "content": []},
             {"role": "user", "content": []},
         ]):
-            await w._process_response(looping_response, {"serverSeqId": 1})
+            await w._generate_response({"serverSeqId": 1})
 
-        # Should have called provider.chat MAX_TOOL_ITERATIONS times
-        assert w.provider.chat.call_count == 5
+        # Should have called stream_chat MAX_TOOL_ITERATIONS times
+        # (initial call + 4 more from iteration increments before hitting limit)
+        assert stream_call_count == MAX_TOOL_ITERATIONS
 
     @pytest.mark.asyncio
     async def test_ws_closed_aborts(self):
         w = _make_agent_wrapper()
         w.ws = AsyncMock()
         w.ws.closed = True
-        tc = ToolCall(id="tc_1", name="action_submit", arguments={})
-        response = LLMResponse(text="text", tool_calls=[tc])
-        await w._process_response(response, {"serverSeqId": 1})
-        # Should not attempt MCP call since ws is closed
-        assert not hasattr(w, '_mcp_call') or True  # just shouldn't crash
+        w.agent_user_id = "agent-1"
+        w.agent_name = "Bot"
+        w.conversation = []
+
+        # stream_chat should never be called since ws is closed
+        w.provider.stream_chat = MagicMock(side_effect=AssertionError("should not be called"))
+
+        await w._generate_response({"serverSeqId": 1})
+        # Should not crash — ws.closed check at top of loop exits early
 
     @pytest.mark.asyncio
-    async def test_no_tool_calls_no_loop(self):
+    async def test_empty_text_sends_error_stream_end(self):
+        """Empty text with no tool calls sends a user-visible error message."""
         w = _make_agent_wrapper()
         w.ws = AsyncMock()
         w.ws.closed = False
-        response = LLMResponse(text="Just text", tool_calls=[])
-        await w._process_response(response, {"serverSeqId": 1})
-        w.ws.send.assert_called_once()
+        w.agent_user_id = "agent-1"
+        w.agent_name = "Bot"
+        w.conversation = [
+            {"sender_id": "user-1", "sender_name": "Alice", "body": "hi"},
+        ]
 
-    @pytest.mark.asyncio
-    async def test_empty_text_not_sent(self):
-        w = _make_agent_wrapper()
-        w.ws = AsyncMock()
-        w.ws.closed = False
         response = LLMResponse(text="", tool_calls=[])
-        await w._process_response(response, {"serverSeqId": 1})
-        w.ws.send.assert_not_called()
+        w.provider.stream_chat = _mock_stream([], response)
+
+        await w._generate_response({"serverSeqId": 1})
+
+        calls = [json.loads(c.args[0]) for c in w.ws.send.call_args_list]
+        types = [c["type"] for c in calls]
+        assert "stream_start" in types
+        assert "stream_end" in types
+        end_call = next(c for c in calls if c["type"] == "stream_end")
+        assert "failed" in end_call["body"].lower()
 
     @pytest.mark.asyncio
-    async def test_none_text_not_sent(self):
+    async def test_none_text_sends_error_stream_end(self):
+        """None text with no tool calls sends a user-visible error message."""
         w = _make_agent_wrapper()
         w.ws = AsyncMock()
         w.ws.closed = False
+        w.agent_user_id = "agent-1"
+        w.agent_name = "Bot"
+        w.conversation = [
+            {"sender_id": "user-1", "sender_name": "Alice", "body": "hi"},
+        ]
+
         response = LLMResponse(text=None, tool_calls=[])
-        await w._process_response(response, {"serverSeqId": 1})
+        w.provider.stream_chat = _mock_stream([], response)
+
+        await w._generate_response({"serverSeqId": 1})
+
+        calls = [json.loads(c.args[0]) for c in w.ws.send.call_args_list]
+        types = [c["type"] for c in calls]
+        assert "stream_start" in types
+        assert "stream_end" in types
+        end_call = next(c for c in calls if c["type"] == "stream_end")
+        assert "failed" in end_call["body"].lower()
+
+    @pytest.mark.asyncio
+    async def test_streaming_error_still_commits(self):
+        """If stream_chat raises mid-stream, whatever was collected gets committed."""
+        w = _make_agent_wrapper()
+        w.ws = AsyncMock()
+        w.ws.closed = False
+        w.agent_user_id = "agent-1"
+        w.agent_name = "Bot"
+        w.conversation = [
+            {"sender_id": "user-1", "sender_name": "Alice", "body": "hi"},
+        ]
+
+        async def _exploding_stream(*args, **kwargs):
+            yield "partial"
+            raise RuntimeError("LLM connection dropped")
+
+        w.provider.stream_chat = _exploding_stream
+
+        await w._generate_response({"serverSeqId": 1})
+
+        calls = [json.loads(c.args[0]) for c in w.ws.send.call_args_list]
+        types = [c["type"] for c in calls]
+        # stream_start + delta("partial") + stream_end("partial")
+        assert "stream_start" in types
+        assert "stream_end" in types
+        end_call = next(c for c in calls if c["type"] == "stream_end")
+        assert end_call["body"] == "partial"
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_skips(self):
+        w = _make_agent_wrapper()
+        w.ws = AsyncMock()
+        w.ws.closed = False
+        w.agent_user_id = "agent-1"
+        w.conversation = []
+
+        # Exhaust rate limiter
+        w.llm_limiter = RateLimiter(max_calls=0, window_seconds=60)
+
+        w.provider.stream_chat = MagicMock(side_effect=AssertionError("should not be called"))
+
+        await w._generate_response({"serverSeqId": 1})
         w.ws.send.assert_not_called()

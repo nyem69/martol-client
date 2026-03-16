@@ -583,6 +583,39 @@ class BaseWrapper:
         except Exception:
             return False  # Delta loss is non-fatal, don't log
 
+    async def send_stream_delta_buffered(self, local_id: str, delta: str) -> None:
+        """Buffer deltas and flush periodically to reduce WS frame count."""
+        if not hasattr(self, '_delta_buffer'):
+            self._delta_buffer = ""
+            self._delta_local_id = ""
+            self._delta_flush_task: asyncio.Task | None = None
+
+        self._delta_buffer += delta
+        self._delta_local_id = local_id
+
+        # Flush immediately if buffer is large enough
+        if len(self._delta_buffer) >= 100:
+            await self._flush_delta_buffer()
+            return
+
+        # Schedule a flush if not already scheduled
+        if self._delta_flush_task is None or self._delta_flush_task.done():
+            self._delta_flush_task = asyncio.ensure_future(self._delayed_delta_flush())
+
+    async def _delayed_delta_flush(self) -> None:
+        """Flush delta buffer after a short delay."""
+        await asyncio.sleep(0.05)  # 50ms coalescing window
+        await self._flush_delta_buffer()
+
+    async def _flush_delta_buffer(self) -> None:
+        """Send accumulated delta buffer."""
+        if not hasattr(self, '_delta_buffer') or not self._delta_buffer:
+            return
+        buf = self._delta_buffer
+        lid = self._delta_local_id
+        self._delta_buffer = ""
+        await self.send_stream_delta(lid, buf)
+
     async def send_stream_end(self, local_id: str, body: str) -> bool:
         """Finalize a stream with the canonical full body text."""
         try:
