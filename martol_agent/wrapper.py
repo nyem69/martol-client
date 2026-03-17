@@ -54,9 +54,17 @@ log = logging.getLogger("martol-agent")
 MAX_TOOL_ITERATIONS = 5
 MAX_TOOL_RESULT_LENGTH = 8000  # Truncate large results
 
+# Tools whose calls are broadcast as visible messages to the room
+VISIBLE_TOOL_CALLS = {
+    "action_submit", "action_status", "action_confirm",
+    "doc_search",
+    "brief_get_active", "brief_update",
+    "ticket_list", "ticket_read", "ticket_comment", "ticket_update",
+}
+
 # Known MCP tool schemas — reject unexpected fields
 ALLOWED_TOOL_FIELDS = {
-    "chat_send": {"body", "reply_to"},
+    "chat_send": {"body", "reply_to", "subtype"},
     "chat_read": {"limit", "before_id"},
     "chat_resync": set(),
     "chat_join": set(),
@@ -242,6 +250,10 @@ class AgentWrapper(BaseWrapper):
                         clean_args = _validate_tool_args(tc.name, tc.arguments)
                         result = await self._mcp_call(tc.name, clean_args)
                         tool_results.append({"tool_call": tc, "result": result})
+                        # Send visible tool call message to room
+                        if tc.name in VISIBLE_TOOL_CALLS:
+                            tool_body = self._format_tool_call_message(tc.name, clean_args, result)
+                            await self._send_tool_call_message(tool_body)
                         # Preserve brief_update side-effect
                         if tc.name == "brief_update" and result and result.get("ok"):
                             new_ver = result.get("data", {}).get("version", 0)
@@ -267,6 +279,37 @@ class AgentWrapper(BaseWrapper):
                 await self.send_message("[Agent] Request timed out.")
             except Exception:
                 log.exception("Error in _generate_response")
+
+    def _format_tool_call_message(self, tool_name: str, args: dict, result: dict | None) -> str:
+        """Format a tool call as a visible message with [tool:<name>] prefix."""
+        input_summary = json.dumps(args, ensure_ascii=False)
+        if len(input_summary) > 120:
+            input_summary = input_summary[:117] + "..."
+
+        if result is None:
+            result_body = "[error]"
+        elif isinstance(result, dict):
+            if result.get("ok"):
+                data = result.get("data", {})
+                result_body = json.dumps(data, ensure_ascii=False)
+                if len(result_body) > 500:
+                    result_body = result_body[:497] + "..."
+            else:
+                result_body = f"[error: {result.get('error', 'unknown')}]"
+        else:
+            result_body = str(result)[:500]
+
+        return f"[tool:{tool_name}] {input_summary} | {result_body}"
+
+    async def _send_tool_call_message(self, body: str) -> None:
+        """Send a tool call message via MCP chat_send with subtype."""
+        try:
+            await self._mcp_call("chat_send", {
+                "body": body,
+                "subtype": "tool_call",
+            })
+        except Exception:
+            log.debug("Failed to send tool call message (non-critical)")
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt with room context and tiered budgeting."""

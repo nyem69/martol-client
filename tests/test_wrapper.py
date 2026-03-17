@@ -342,7 +342,13 @@ class TestGenerateResponse:
         ]):
             await w._generate_response({"serverSeqId": 1})
 
-        w._mcp_call.assert_called_once()
+        # 2 _mcp_call invocations: tool execution + visible tool_call message
+        assert w._mcp_call.call_count == 2
+        # First call: the actual tool
+        assert w._mcp_call.call_args_list[0].args[0] == "action_submit"
+        # Second call: chat_send with subtype
+        assert w._mcp_call.call_args_list[1].args[0] == "chat_send"
+        assert w._mcp_call.call_args_list[1].args[1]["subtype"] == "tool_call"
         assert call_count == 2
         # Should have stream_start/end for each iteration (2 iterations)
         calls = [json.loads(c.args[0]) for c in w.ws.send.call_args_list]
